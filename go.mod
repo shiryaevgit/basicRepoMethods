@@ -1,11 +1,8 @@
-module myProject
+module github.com/shiryaevgit/myProject
 
 go 1.21
 
-require (
-	github.com/jackc/pgx/v4 v4.18.1
-	github.com/jackc/pgx/v5 v5.5.3
-)
+require github.com/jackc/pgx/v4 v4.18.1
 
 require (
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
