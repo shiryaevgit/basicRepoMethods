@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5"
-	"time"
+	"github.com/shiryaevgit/myProject/pkg/models"
 )
 
 type DataBaseHandler struct {
@@ -23,25 +23,42 @@ func NewHandlerDB(dbURL string) (*DataBaseHandler, error) {
 	return &DataBaseHandler{conn}, nil
 }
 
-func (db *DataBaseHandler) SelectFromTestTable() error {
+func (db *DataBaseHandler) GetAllUsers() ([]models.User, error) {
 	rows, err := db.conn.Query(context.Background(), "SELECT * FROM users")
 	if err != nil {
-		return fmt.Errorf("query(): %w", err)
+		return nil, fmt.Errorf("query(): %w", err)
 	}
 	defer rows.Close()
 
+	var users []models.User
 	for rows.Next() {
-		var id int
-		var created_at time.Time
-		var login string
-		var full_name string
-
-		if err = rows.Scan(&id, &created_at, &login, &full_name); err != nil {
-			return fmt.Errorf("scan(): %w", err)
+		var user models.User
+		err = rows.Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("rows.Scan(): %w", err)
 		}
-		fmt.Printf("id: %d, login: %s, full_name: %s, created_at:%v\n ", id, created_at, login, full_name)
+		users = append(users, user)
 	}
-	return nil
+	return users, nil
+}
+
+func (db *DataBaseHandler) GetAllPosts(userID int) ([]models.Post, error) {
+	rows, err := db.conn.Query(context.Background(), "SELECT * FROM posts WHERE id=$1", userID)
+	if err != nil {
+		return nil, fmt.Errorf("query(): %w", err)
+	}
+	defer rows.Close()
+
+	var posts []models.Post
+	for rows.Next() {
+		var post models.Post
+		err = rows.Scan(&post.ID, &post.Text, &post.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("rows.Scan(): %w", err)
+		}
+		posts = append(posts, post)
+	}
+	return posts, nil
 }
 
 func (db *DataBaseHandler) InsertIntoTestTable(login string, fullName string) error {

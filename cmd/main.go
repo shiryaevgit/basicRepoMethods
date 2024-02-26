@@ -14,8 +14,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("config.LoadConfig(): %v", err)
 	}
-	fmt.Println(configFile.DatabaseURL)
-	fmt.Println(configFile.HTTPPort)
 
 	dbHandler, err := database.NewHandlerDB(configFile.DatabaseURL)
 	if err != nil {
@@ -29,9 +27,20 @@ func main() {
 	}
 	log.SetOutput(fileLog)
 
-	err = dbHandler.SelectFromTestTable()
+	users, err := dbHandler.GetAllUsers()
 	if err != nil {
-		log.Printf("selectFromTestTable: %v", err)
+		log.Printf("GetAllUsers: %v", err)
+	}
+	for _, user := range users {
+		fmt.Printf("ID: %v\nLogin: %v\nFullName: %v\nCreated: %s\n\n", user.ID, user.Login, user.FullName, user.CreatedAt.Format("2006-01-02 15:04:05"))
+	}
+
+	posts, err := dbHandler.GetAllPosts(1)
+	if err != nil {
+		log.Printf("GetAllPosts: %v", err)
+	}
+	for _, post := range posts {
+		fmt.Printf("ID: %v\n UserId: %v\n Text: %v\n Created: %s\n", post.ID, post.UserId, post.Text, post.CreatedAt.Format("2006-01-02 15:04:05"))
 	}
 
 	err = dbHandler.InsertIntoTestTable("yan", "Yanush Chernyih")
