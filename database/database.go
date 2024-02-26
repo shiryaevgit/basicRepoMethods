@@ -3,7 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	"time"
 )
 
@@ -15,9 +15,8 @@ func (db *DataBaseHandler) Close() {
 	db.conn.Close(context.Background()) //
 }
 
-func NewHandlerDB() (*DataBaseHandler, error) {
-	// conn, err := pgx.Connect(context.Background(), os.Getenv("DATABASE_URL")) - не работает, та же ошибка
-	conn, err := pgx.Connect(context.Background(), "user=user dbname=mydb sslmode=disable password=zaq1xsw2")
+func NewHandlerDB(dbURL string) (*DataBaseHandler, error) {
+	conn, err := pgx.Connect(context.Background(), dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("connect(): %w", err)
 	}

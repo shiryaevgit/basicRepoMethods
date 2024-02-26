@@ -1,13 +1,23 @@
 package main
 
 import (
+	"fmt"
+	"github.com/shiryaevgit/myProject/config"
 	"github.com/shiryaevgit/myProject/database"
 	"log"
 	"os"
 )
 
 func main() {
-	dbHandler, err := database.NewHandlerDB()
+
+	configFile, err := config.LoadConfig("conf.json")
+	if err != nil {
+		log.Fatalf("config.LoadConfig(): %v", err)
+	}
+	fmt.Println(configFile.DatabaseURL)
+	fmt.Println(configFile.HTTPPort)
+
+	dbHandler, err := database.NewHandlerDB(configFile.DatabaseURL)
 	if err != nil {
 		log.Fatalf("unable to connect to database: %v", err)
 	}
@@ -44,5 +54,9 @@ mydb=# CREATE TABLE public.posts (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     text TEXT NOT NULL
 );
+
+.env
+DATABASE_URL=postgres://user:zaq1xsw2@localhost:5432/mydb?sslmode=disable
+
 
 */
