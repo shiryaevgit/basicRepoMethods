@@ -7,24 +7,23 @@ import (
 	"github.com/shiryaevgit/myProject/pkg/models"
 )
 
-type DataBaseHandler struct {
-	conn *pgx.Conn
+type UserRepository struct {
+	Сonn *pgx.Conn
 }
 
-func (db *DataBaseHandler) Close() {
-	db.conn.Close(context.Background()) //
+func (db *UserRepository) Close() {
+	db.Сonn.Close(context.Background()) //
 }
-
-func NewHandlerDB(dbURL string) (*DataBaseHandler, error) {
+func NewHandlerDB(dbURL string) (*UserRepository, error) {
 	conn, err := pgx.Connect(context.Background(), dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("connect(): %w", err)
 	}
-	return &DataBaseHandler{conn}, nil
+	return &UserRepository{conn}, nil
 }
 
-func (db *DataBaseHandler) GetAllUsers() ([]models.User, error) {
-	rows, err := db.conn.Query(context.Background(), "SELECT * FROM users")
+func (db *UserRepository) GetAllUsers() ([]models.User, error) {
+	rows, err := db.Сonn.Query(context.Background(), "SELECT * FROM users")
 	if err != nil {
 		return nil, fmt.Errorf("query(): %w", err)
 	}
@@ -42,8 +41,8 @@ func (db *DataBaseHandler) GetAllUsers() ([]models.User, error) {
 	return users, nil
 }
 
-func (db *DataBaseHandler) GetAllPosts(userID int) ([]models.Post, error) {
-	rows, err := db.conn.Query(context.Background(), "SELECT * FROM posts WHERE id=$1", userID)
+func (db *UserRepository) GetAllPosts(userID int) ([]models.Post, error) {
+	rows, err := db.Сonn.Query(context.Background(), "SELECT * FROM posts WHERE id=$1", userID)
 	if err != nil {
 		return nil, fmt.Errorf("query(): %w", err)
 	}
@@ -61,8 +60,8 @@ func (db *DataBaseHandler) GetAllPosts(userID int) ([]models.Post, error) {
 	return posts, nil
 }
 
-func (db *DataBaseHandler) InsertIntoTestTable(login string, fullName string) error {
-	_, err := db.conn.Exec(context.Background(), "INSERT INTO users (login,full_name) VALUES ($1, $2)", login, fullName)
+func (db *UserRepository) InsertIntoTestTable(login string, fullName string) error {
+	_, err := db.Сonn.Exec(context.Background(), "INSERT INTO users (login,full_name) VALUES ($1, $2)", login, fullName)
 	if err != nil {
 		return fmt.Errorf("exec(): %w", err)
 	}

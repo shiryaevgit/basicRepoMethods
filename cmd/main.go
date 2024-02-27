@@ -1,11 +1,17 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"errors"
 	"github.com/shiryaevgit/myProject/config"
 	"github.com/shiryaevgit/myProject/database"
+	"github.com/shiryaevgit/myProject/pkg/handlers"
+	"github.com/shiryaevgit/myProject/pkg/server"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
+	"strconv"
 )
 
 func main() {
@@ -15,57 +21,113 @@ func main() {
 		log.Fatalf("config.LoadConfig(): %v", err)
 	}
 
-	dbHandler, err := database.NewHandlerDB(configFile.DatabaseURL)
+	db, err := database.NewHandlerDB(configFile.DatabaseURL)
 	if err != nil {
 		log.Fatalf("unable to connect to database: %v", err)
 	}
-	defer dbHandler.Close()
+	defer db.Close()
 
-	fileLog, err := os.OpenFile("error.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	fileLog, err := os.OpenFile("error.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	if err != nil {
 		log.Printf("openFile(error.log): %v", err)
 	}
+	defer fileLog.Close()
+
 	log.SetOutput(fileLog)
 
-	users, err := dbHandler.GetAllUsers()
-	if err != nil {
-		log.Printf("GetAllUsers: %v", err)
-	}
-	for _, user := range users {
-		fmt.Printf("ID: %v\nLogin: %v\nFullName: %v\nCreated: %s\n\n", user.ID, user.Login, user.FullName, user.CreatedAt.Format("2006-01-02 15:04:05"))
+	srv := new(server.Server)
+	mux := http.NewServeMux()
+	handlerDb := handlers.NewHandlerServ(db)
+
+	mux.HandleFunc("/users", handlerDb.CreateUser)
+	mux.HandleFunc("/users/all", handlerDb.GetAllUsers)
+	mux.HandleFunc("/users/", handlerDb.GetUserById)
+	mux.HandleFunc("/users?orderBy=...&login=...&limit=...&offset=...", handlerDb.GetUsersList)
+	mux.HandleFunc("/posts", handlerDb.CreatePost)
+	mux.HandleFunc("/posts?userId=...&limit=...&offset=...", handlerDb.GetAllPostsUser)
+
+	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
+	portStr := strconv.Itoa(configFile.HTTPPort)
+	err = srv.Run(portStr, mux, ctx)
+	switch {
+	case err != nil && errors.Is(err, http.ErrServerClosed):
+		log.Printf("Run() http.ErrServerClosed: %v", err)
+	case err != nil:
+		log.Printf("Run(): %v", err)
+	default:
+		log.Printf("Server is running on http://127.0.0.1%v\n", configFile.HTTPPort)
 	}
 
-	posts, err := dbHandler.GetAllPosts(1)
-	if err != nil {
-		log.Printf("GetAllPosts: %v", err)
-	}
-	for _, post := range posts {
-		fmt.Printf("ID: %v\n UserId: %v\n Text: %v\n Created: %s\n", post.ID, post.UserId, post.Text, post.CreatedAt.Format("2006-01-02 15:04:05"))
-	}
-
-	err = dbHandler.InsertIntoTestTable("yan", "Yanush Chernyih")
-	if err != nil {
-		log.Printf("insertIntoTestTable: %v", err)
-	}
 }
 
 /*
-mydb=# CREATE TABLE public.users (
+Требования к моделям данных:
+Пользователь:
+ID, CreatedAt(дата создания), Login, ФИО
+Пост
+ID, CreatedAt, UserID(пользователь, создавший пост), Text(текст поста)
+
+Все поля NOT NULL
+Поля ID, CreatedAt должны генерироваться на стороне БД. Пример:
+https://www.postgresqltutorial.com/postgresql-tutorial/postgresql-identity-column/
+
+Возвращать сгенерированные БД значения можно используя оператор RETURNING:
+
+INSERT INTO ... RETURNING *;
+
+
+Методы HTTP сервера, обеспечивающие взаимодействие с БД:
+
+1. Создание пользователя:
+POST /users
+Принимает в теле поля, требуемые для создания пользователя, возвращает созданного пользователя.
+
+2. Получение пользователя:
+GET /users/{id}
+В качестве PATH параметра принимает идентификатор пользователя. Возвращает в ответе созданного пользователя.
+
+3. Получение списка пользователей:
+GET /users?orderBy=...&login=...&limit=...&offset=...
+Query параметры в запросе:
+orderBy - сортировка запрашиваемых данных по колонкам: CreatedAt, Login
+login - логин пользователя к выдаче
+limit - кол-во пользователей к выдаче в запросе
+offset - кол-во пользователей к пропуску при выдаче
+
+Все query параметры опциональны (могут как быть переданы в запросе, так и опущены).
+
+* при реализации limit, offset советую изучить что такое Пагинация.
+
+4. Создание поста пользователем:
+POST /posts
+Принимает в теле поля, требуемые для создания поста, возвращает созданный пост.
+
+5. Получение списка постов пользователя:
+GET /posts?userId=...&limit=...&offset=...
+Возвращает созданные пользователями посты.
+
+Query параметры в запросе:
+userId - фильтр на идентификатор пользователя, создавшего посты
+limit - кол-во постов к выдаче в запросе
+offset - кол-во постов к пропуску при выдаче
+
+Все query параметры опциональны (могут как быть переданы в запросе, так и опущены).
+
+CREATE TABLE public.users (
     id SERIAL PRIMARY KEY,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     login TEXT NOT NULL,
-    full_name TEXT NOT NULL
-);
-CREATE TABLE
-mydb=# CREATE TABLE public.posts (
-    id SERIAL PRIMARY KEY,
-    user_id INT REFERENCES public.users(id) ON DELETE CASCADE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    text TEXT NOT NULL
+    full_name TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-.env
-DATABASE_URL=postgres://user:zaq1xsw2@localhost:5432/mydb?sslmode=disable
+CREATE TABLE public.posts (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES public.users(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
 
 
 */
