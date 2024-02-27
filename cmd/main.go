@@ -51,7 +51,7 @@ func main() {
 	err = srv.Run(portStr, mux, ctx)
 	switch {
 	case err != nil && errors.Is(err, http.ErrServerClosed):
-		log.Printf("Run() http.ErrServerClosed: %v", err)
+		log.Printf("Run(): %v", err)
 	case err != nil:
 		log.Printf("Run(): %v", err)
 	default:
