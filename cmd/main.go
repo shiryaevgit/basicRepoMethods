@@ -39,12 +39,17 @@ func main() {
 	mux := http.NewServeMux()
 	handlerDb := handlers.NewHandlerServ(db)
 
-	mux.HandleFunc("/users", handlerDb.CreateUser)
 	mux.HandleFunc("/users/all", handlerDb.GetAllUsers)
 	mux.HandleFunc("/users/", handlerDb.GetUserById)
-	mux.HandleFunc("/users?orderBy=...&login=...&limit=...&offset=...", handlerDb.GetUsersList)
 	mux.HandleFunc("/posts", handlerDb.CreatePost)
 	mux.HandleFunc("/posts?userId=...&limit=...&offset=...", handlerDb.GetAllPostsUser)
+	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			handlerDb.GetUsersList(w, r)
+		} else if r.Method == http.MethodPost {
+			handlerDb.CreateUser(w, r)
+		}
+	})
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
 	portStr := strconv.Itoa(configFile.HTTPPort)

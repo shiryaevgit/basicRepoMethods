@@ -12,8 +12,6 @@ type Config struct {
 }
 
 func LoadConfig(filePath string) (Config, error) {
-
-	fmt.Println(filePath)
 	configFile, err := os.Open(filePath)
 	if err != nil {
 		return Config{}, fmt.Errorf("os.Open(): %w", err)

@@ -20,7 +20,6 @@ func NewHandlerServ(db *database.UserRepository) *Handler {
 }
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
-
 	if r.Method == http.MethodPost {
 		tempUser := new(models.User)
 		err := json.NewDecoder(r.Body).Decode(tempUser)
@@ -76,29 +75,62 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetUsersList(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		//orderBy := r.URL.Query().Get("orderBy")
-		//login := r.URL.Query().Get("login")
-		//limit := r.URL.Query().Get("limit")
-		//offset := r.URL.Query().Get("offset")
-		fmt.Println("GetUsersList")
+		orderBy := r.URL.Query().Get("orderBy")
+		login := r.URL.Query().Get("login")
+		limit := r.URL.Query().Get("limit")
+		offset := r.URL.Query().Get("offset")
+
+		sqlQuery := "SELECT * FROM users"
+		if login != "" {
+			sqlQuery += fmt.Sprintf(" WHERE login='%s'", login)
+
+		}
+		if orderBy != "" {
+			sqlQuery += fmt.Sprintf(" ORDER BY %s", orderBy)
+
+		}
+		if limit != "" {
+			sqlQuery += fmt.Sprintf(" LIMIT %s", limit)
+		}
+		if offset != "" {
+			sqlQuery += fmt.Sprintf(" OFFSET %s", offset)
+		}
+		rows, err := h.dbHandler.Сonn.Query(context.Background(), sqlQuery)
+		if err != nil {
+			http.Error(w, "The entered data is incorrect", http.StatusBadRequest)
+			log.Printf("GetUsersList():%v", err)
+		}
+
+		var users []models.User
+		for rows.Next() {
+			user := *new(models.User)
+			err = rows.Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
+			if err != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				log.Printf("GetUsersList():%v", err)
+			}
+			users = append(users, user)
+		}
+
+		for _, u := range users {
+			fmt.Printf("ID:%v\nLogin:%v\nFullName:%v\nCreated at:%v\n\n", u.ID, u.Login, u.FullName, u.CreatedAt.Format("2006-01-02 15:04:05"))
+		}
 	}
-
-	/*
-		3. Получение списка пользователей:
-		GET /users?orderBy=...&login=...&limit=...&offset=...
-		Query параметры в запросе:
-		orderBy - сортировка запрашиваемых данных по колонкам: CreatedAt, Login.
-		login - логин пользователя к выдаче
-		limit - кол-во пользователей к выдаче в запросе
-		offset - кол-во пользователей к пропуску при выдаче
-
-		Все query параметры опциональны (могут как быть переданы в запросе, так и опущены).
-
-		* при реализации limit, offset советую изучить что такое Пагинация.
-	*/
-
-	fmt.Println("GetUsersList")
 }
+
+/*
+	3. Получение списка пользователей:
+	GET /users?orderBy=...&login=...&limit=...&offset=...
+	Query параметры в запросе:
+	orderBy - сортировка запрашиваемых данных по колонкам: CreatedAt, Login.
+	login - логин пользователя к выдаче
+	limit - кол-во пользователей к выдаче в запросе
+	offset - кол-во пользователей к пропуску при выдаче
+
+	Все query параметры опциональны (могут как быть переданы в запросе, так и опущены).
+
+	* при реализации limit, offset советую изучить что такое Пагинация.
+*/
 
 func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("CreatePost")
