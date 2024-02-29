@@ -41,13 +41,18 @@ func main() {
 
 	mux.HandleFunc("/users/all", handlerDb.GetAllUsers)
 	mux.HandleFunc("/users/", handlerDb.GetUserById)
-	mux.HandleFunc("/posts", handlerDb.CreatePost)
-	mux.HandleFunc("/posts?userId=...&limit=...&offset=...", handlerDb.GetAllPostsUser)
 	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			handlerDb.GetUsersList(w, r)
 		} else if r.Method == http.MethodPost {
 			handlerDb.CreateUser(w, r)
+		}
+	})
+	mux.HandleFunc("/posts", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handlerDb.CreatePost(w, r)
+		} else if r.Method == http.MethodGet {
+			handlerDb.GetAllPostsUser(w, r)
 		}
 	})
 
@@ -89,7 +94,8 @@ POST /users
 
 2. Получение пользователя:
 GET /users/{id}
-В качестве PATH параметра принимает идентификатор пользователя. Возвращает в ответе созданного пользователя.
+В качестве PATH параметра принимает идентификатор пользователя.
+Возвращает в ответе созданного пользователя.
 
 3. Получение списка пользователей:
 GET /users?orderBy=...&login=...&limit=...&offset=...

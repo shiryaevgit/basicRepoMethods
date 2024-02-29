@@ -21,20 +21,29 @@ func NewHandlerServ(db *database.UserRepository) *Handler {
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
-		tempUser := new(models.User)
-		err := json.NewDecoder(r.Body).Decode(tempUser)
+
+		user := new(models.User)
+		err := json.NewDecoder(r.Body).Decode(user)
 		if err != nil {
 			log.Printf("CreateUser: %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
 
-		_, err = h.dbHandler.Сonn.Exec(context.Background(), "INSERT INTO users (login, full_name) VALUES ($1, $2)", tempUser.Login, tempUser.FullName)
+		err = h.dbHandler.Сonn.QueryRow(context.Background(), "INSERT INTO users (login, full_name) VALUES ($1, $2) RETURNING *", user.Login, user.FullName).
+			Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 		if err != nil {
-			log.Printf("CreateUser: %v", err)
+			log.Printf("CreateUser() QueryRow: %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
+		}
+		respJson, err := json.Marshal(user)
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write(respJson)
+		if err != nil {
+			log.Printf("CreateUser() Marshal(): %v", err)
 		}
 	}
 }
+
 func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 
@@ -99,6 +108,7 @@ func (h *Handler) GetUsersList(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, "The entered data is incorrect", http.StatusBadRequest)
 			log.Printf("GetUsersList():%v", err)
+			return
 		}
 
 		var users []models.User
@@ -108,38 +118,133 @@ func (h *Handler) GetUsersList(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				http.Error(w, "internal error", http.StatusInternalServerError)
 				log.Printf("GetUsersList():%v", err)
+				return
 			}
 			users = append(users, user)
 		}
 
-		for _, u := range users {
-			fmt.Printf("ID:%v\nLogin:%v\nFullName:%v\nCreated at:%v\n\n", u.ID, u.Login, u.FullName, u.CreatedAt.Format("2006-01-02 15:04:05"))
+		respJson, err := json.Marshal(users)
+		if err != nil {
+			fmt.Printf("GetUsersList() Marshal(): %v", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write(respJson)
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			log.Printf("GetUsersList() Write(): %v", err)
+		}
+
+		//for _, u := range users {
+		//	fmt.Printf("ID:%v\nLogin:%v\nFullName:%v\nCreated at:%v\n\n", u.ID, u.Login, u.FullName, u.CreatedAt.Format("2006-01-02 15:04:05"))
+		//}
+	}
+}
+
+func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		defer r.Body.Close()
+
+		post := new(models.Post)
+		decoder := json.NewDecoder(r.Body)
+		err := decoder.Decode(post)
+		if err != nil {
+			http.Error(w, `Invalid request entered`, http.StatusBadRequest)
+			log.Printf("CreatePost(): %v", err)
+			return
+		}
+
+		var userId int
+		err = h.dbHandler.Сonn.QueryRow(context.Background(), "SELECT id FROM users WHERE id=$1", post.UserId).Scan(&userId)
+		if err != nil {
+			http.Error(w, "User not found", http.StatusBadRequest)
+			log.Printf("CreatePost() QueryRow() SELECT: %v", err)
+			return
+		}
+
+		err = h.dbHandler.Сonn.QueryRow(context.Background(), "INSERT INTO posts (user_id,text) VALUES ($1,$2) RETURNING *", post.UserId, post.Text).
+			Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusBadRequest)
+			log.Printf("CreatePost() QueryRow() INSERT: %v", err)
+			return
+		}
+
+		respJson, err := json.Marshal(post)
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusBadRequest)
+			log.Printf("CreatePost() Marshal(): %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write(respJson)
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusBadRequest)
+			log.Printf("CreatePost() Write(): %v", err)
+		}
+
+	}
+
+}
+
+func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		userId := r.URL.Query().Get("userId")
+		limit := r.URL.Query().Get("limit")
+		offset := r.URL.Query().Get("offset")
+
+		sqlQuery := fmt.Sprintf("SELECT * FROM posts")
+		if userId == "" {
+			http.Error(w, "incorrect id", http.StatusBadRequest)
+			log.Printf("GetAllPostsUser() incorrect id")
+			return
+		} else {
+			sqlQuery += fmt.Sprintf(" WHERE user_id='%s'", userId)
+		}
+		if limit != "" {
+			sqlQuery += fmt.Sprintf(" LIMIT %s", limit)
+		}
+		if offset != "" {
+			sqlQuery += fmt.Sprintf(" OFFSET %s", offset)
+		}
+
+		rows, err := h.dbHandler.Сonn.Query(context.Background(), sqlQuery)
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			log.Printf("GetAllPostsUser() Query()%v", err)
+			return
+		}
+		defer rows.Close()
+
+		var posts []models.Post
+		for rows.Next() {
+			var post models.Post
+			err = rows.Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
+			if err != nil {
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				log.Printf("GetAllPostsUser() Scan()%v", err)
+				return
+			}
+			posts = append(posts, post)
+		}
+
+		resJson, err := json.Marshal(posts)
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			log.Printf("GetAllPostsUser() Marshal(): %v", err)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write(resJson)
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			log.Printf("GetAllPostsUser() Write(): %v", err)
 		}
 	}
 }
 
-/*
-	3. Получение списка пользователей:
-	GET /users?orderBy=...&login=...&limit=...&offset=...
-	Query параметры в запросе:
-	orderBy - сортировка запрашиваемых данных по колонкам: CreatedAt, Login.
-	login - логин пользователя к выдаче
-	limit - кол-во пользователей к выдаче в запросе
-	offset - кол-во пользователей к пропуску при выдаче
-
-	Все query параметры опциональны (могут как быть переданы в запросе, так и опущены).
-
-	* при реализации limit, offset советую изучить что такое Пагинация.
-*/
-
-func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("CreatePost")
-}
-
-func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("GetAllPostsUser")
-
-}
 func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		rows, err := h.dbHandler.Сonn.Query(context.Background(), "SELECT *FROM users")
