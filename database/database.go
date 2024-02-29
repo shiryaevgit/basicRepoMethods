@@ -5,25 +5,27 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/shiryaevgit/myProject/pkg/models"
+	"sync"
 )
 
 type UserRepository struct {
-	Сonn *pgx.Conn
+	Conn *pgx.Conn
+	Mu   sync.Mutex
 }
 
-func (db *UserRepository) Close() {
-	db.Сonn.Close(context.Background()) //
-}
 func NewHandlerDB(dbURL string) (*UserRepository, error) {
 	conn, err := pgx.Connect(context.Background(), dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("connect(): %w", err)
 	}
-	return &UserRepository{conn}, nil
+	return &UserRepository{Conn: conn}, nil
+}
+func (db *UserRepository) Close() {
+	db.Conn.Close(context.Background()) //
 }
 
 func (db *UserRepository) GetAllUsers() ([]models.User, error) {
-	rows, err := db.Сonn.Query(context.Background(), "SELECT * FROM users")
+	rows, err := db.Conn.Query(context.Background(), "SELECT * FROM users")
 	if err != nil {
 		return nil, fmt.Errorf("query(): %w", err)
 	}
@@ -42,7 +44,7 @@ func (db *UserRepository) GetAllUsers() ([]models.User, error) {
 }
 
 func (db *UserRepository) GetAllPosts(userID int) ([]models.Post, error) {
-	rows, err := db.Сonn.Query(context.Background(), "SELECT * FROM posts WHERE id=$1", userID)
+	rows, err := db.Conn.Query(context.Background(), "SELECT * FROM posts WHERE id=$1", userID)
 	if err != nil {
 		return nil, fmt.Errorf("query(): %w", err)
 	}
@@ -61,7 +63,7 @@ func (db *UserRepository) GetAllPosts(userID int) ([]models.Post, error) {
 }
 
 func (db *UserRepository) InsertIntoTestTable(login string, fullName string) error {
-	_, err := db.Сonn.Exec(context.Background(), "INSERT INTO users (login,full_name) VALUES ($1, $2)", login, fullName)
+	_, err := db.Conn.Exec(context.Background(), "INSERT INTO users (login,full_name) VALUES ($1, $2)", login, fullName)
 	if err != nil {
 		return fmt.Errorf("exec(): %w", err)
 	}

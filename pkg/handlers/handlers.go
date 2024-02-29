@@ -29,7 +29,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
 
-		err = h.dbHandler.Сonn.QueryRow(context.Background(), "INSERT INTO users (login, full_name) VALUES ($1, $2) RETURNING *", user.Login, user.FullName).
+		err = h.dbHandler.Conn.QueryRow(context.Background(), "INSERT INTO users (login, full_name) VALUES ($1, $2) RETURNING *", user.Login, user.FullName).
 			Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 		if err != nil {
 			log.Printf("CreateUser() QueryRow: %v", err)
@@ -45,6 +45,9 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
+	h.dbHandler.Mu.Lock()
+	defer h.dbHandler.Mu.Unlock()
+
 	if r.Method == http.MethodGet {
 
 		id := r.URL.Path[len("/users/"):]
@@ -57,7 +60,7 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 
 		var user models.User
 
-		err = h.dbHandler.Сonn.QueryRow(context.Background(), "SELECT id, login, full_name, created_at FROM users WHERE id=$1", idInt).
+		err = h.dbHandler.Conn.QueryRow(context.Background(), "SELECT id, login, full_name, created_at FROM users WHERE id=$1", idInt).
 			Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 		if err != nil {
 			log.Printf("GetUserById:  %v", err)
@@ -83,6 +86,9 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUsersList(w http.ResponseWriter, r *http.Request) {
+	h.dbHandler.Mu.Lock()
+	defer h.dbHandler.Mu.Unlock()
+
 	if r.Method == http.MethodGet {
 		orderBy := r.URL.Query().Get("orderBy")
 		login := r.URL.Query().Get("login")
@@ -104,7 +110,7 @@ func (h *Handler) GetUsersList(w http.ResponseWriter, r *http.Request) {
 		if offset != "" {
 			sqlQuery += fmt.Sprintf(" OFFSET %s", offset)
 		}
-		rows, err := h.dbHandler.Сonn.Query(context.Background(), sqlQuery)
+		rows, err := h.dbHandler.Conn.Query(context.Background(), sqlQuery)
 		if err != nil {
 			http.Error(w, "The entered data is incorrect", http.StatusBadRequest)
 			log.Printf("GetUsersList():%v", err)
@@ -156,14 +162,14 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var userId int
-		err = h.dbHandler.Сonn.QueryRow(context.Background(), "SELECT id FROM users WHERE id=$1", post.UserId).Scan(&userId)
+		err = h.dbHandler.Conn.QueryRow(context.Background(), "SELECT id FROM users WHERE id=$1", post.UserId).Scan(&userId)
 		if err != nil {
 			http.Error(w, "User not found", http.StatusBadRequest)
 			log.Printf("CreatePost() QueryRow() SELECT: %v", err)
 			return
 		}
 
-		err = h.dbHandler.Сonn.QueryRow(context.Background(), "INSERT INTO posts (user_id,text) VALUES ($1,$2) RETURNING *", post.UserId, post.Text).
+		err = h.dbHandler.Conn.QueryRow(context.Background(), "INSERT INTO posts (user_id,text) VALUES ($1,$2) RETURNING *", post.UserId, post.Text).
 			Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
 		if err != nil {
 			http.Error(w, "Internal error", http.StatusBadRequest)
@@ -189,6 +195,9 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
+	h.dbHandler.Mu.Lock()
+	defer h.dbHandler.Mu.Unlock()
+
 	if r.Method == http.MethodGet {
 		userId := r.URL.Query().Get("userId")
 		limit := r.URL.Query().Get("limit")
@@ -209,7 +218,7 @@ func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
 			sqlQuery += fmt.Sprintf(" OFFSET %s", offset)
 		}
 
-		rows, err := h.dbHandler.Сonn.Query(context.Background(), sqlQuery)
+		rows, err := h.dbHandler.Conn.Query(context.Background(), sqlQuery)
 		if err != nil {
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			log.Printf("GetAllPostsUser() Query()%v", err)
@@ -246,8 +255,11 @@ func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
+	h.dbHandler.Mu.Lock()
+	defer h.dbHandler.Mu.Unlock()
+
 	if r.Method == http.MethodGet {
-		rows, err := h.dbHandler.Сonn.Query(context.Background(), "SELECT *FROM users")
+		rows, err := h.dbHandler.Conn.Query(context.Background(), "SELECT *FROM users")
 		if err != nil {
 			log.Printf("GetAllUsers: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
