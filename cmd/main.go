@@ -6,6 +6,7 @@ import (
 	"github.com/shiryaevgit/myProject/config"
 	"github.com/shiryaevgit/myProject/database"
 	"github.com/shiryaevgit/myProject/pkg/handlers"
+	"github.com/shiryaevgit/myProject/pkg/loggers/standLog"
 	"github.com/shiryaevgit/myProject/pkg/server"
 	"log"
 	"net/http"
@@ -27,14 +28,11 @@ func main() {
 	}
 	defer db.Close()
 
-	fileLog, err := os.OpenFile("error.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+	fileLog, err := standLog.LoadStandLog("error.log")
 	if err != nil {
-		log.Printf("openFile(error.log): %v", err)
+		log.Fatalf("LoadStandLog():%v", err)
 	}
 	defer fileLog.Close()
-
-	log.SetOutput(fileLog)
-	log.SetFlags(log.Lshortfile | log.Ltime)
 
 	srv := new(server.Server)
 	mux := http.NewServeMux()
