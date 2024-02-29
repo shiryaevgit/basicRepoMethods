@@ -20,8 +20,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("config.LoadConfig(): %v", err)
 	}
-
-	db, err := database.NewHandlerDB(configFile.DatabaseURL)
+	ctxDB := context.Background()
+	db, err := database.NewUserRepository(configFile.DatabaseURL, ctxDB)
 	if err != nil {
 		log.Fatalf("unable to connect to database: %v", err)
 	}
@@ -34,6 +34,7 @@ func main() {
 	defer fileLog.Close()
 
 	log.SetOutput(fileLog)
+	log.SetFlags(log.Lshortfile | log.Ltime)
 
 	srv := new(server.Server)
 	mux := http.NewServeMux()
@@ -67,7 +68,6 @@ func main() {
 	default:
 		log.Printf("Server is running on http://127.0.0.1%v\n", configFile.HTTPPort)
 	}
-
 }
 
 /*

@@ -11,10 +11,11 @@ import (
 type UserRepository struct {
 	Conn *pgx.Conn
 	Mu   sync.Mutex
+	Ctx  context.Context
 }
 
-func NewHandlerDB(dbURL string) (*UserRepository, error) {
-	conn, err := pgx.Connect(context.Background(), dbURL)
+func NewUserRepository(dbURL string, ctx context.Context) (*UserRepository, error) {
+	conn, err := pgx.Connect(ctx, dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("connect(): %w", err)
 	}
