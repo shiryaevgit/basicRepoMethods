@@ -18,7 +18,10 @@ func NewUserRepository(dbURL string, ctx context.Context) (*UserRepository, erro
 	if err != nil {
 		return nil, fmt.Errorf("connect(): %w", err)
 	}
-	return &UserRepository{Conn: conn, Ctx: ctx}, nil
+
+	var mtx sync.Mutex
+
+	return &UserRepository{Conn: conn, Mu: mtx, Ctx: ctx}, nil
 }
 func (db *UserRepository) Close() {
 	db.Conn.Close(context.Background()) //

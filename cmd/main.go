@@ -6,6 +6,7 @@ import (
 	"github.com/shiryaevgit/myProject/config"
 	"github.com/shiryaevgit/myProject/database"
 	"github.com/shiryaevgit/myProject/pkg/handlers"
+	"github.com/shiryaevgit/myProject/pkg/loggers/logrus"
 	"github.com/shiryaevgit/myProject/pkg/loggers/standLog"
 	"github.com/shiryaevgit/myProject/pkg/server"
 	"log"
@@ -28,11 +29,20 @@ func main() {
 	}
 	defer db.Close()
 
-	fileLog, err := standLog.LoadStandLog("error.log")
+	// standLog
+	fileLog, err := standLog.LoadStandLog("standLog.log")
 	if err != nil {
 		log.Fatalf("LoadStandLog():%v", err)
 	}
 	defer fileLog.Close()
+
+	// logrus
+	logger, fileLogrus, err := logrus.SetupLogger("logrus.log")
+	if err != nil {
+		log.Fatal(err)
+	}
+	logger.Info("This log message is configured using loggerconfig package")
+	defer fileLogrus.Close()
 
 	srv := new(server.Server)
 	mux := http.NewServeMux()
@@ -61,82 +71,12 @@ func main() {
 	switch {
 	case err != nil && errors.Is(err, http.ErrServerClosed):
 		log.Printf("Run(): %v", err)
+		logger.Error("Run(): ", err)
+		logger.Info("Run(): ", err)
+
 	case err != nil:
 		log.Printf("Run(): %v", err)
 	default:
 		log.Printf("Server is running on http://127.0.0.1%v\n", configFile.HTTPPort)
 	}
 }
-
-/*
-Требования к моделям данных:
-Пользователь:
-ID, CreatedAt(дата создания), Login, ФИО
-Пост
-ID, CreatedAt, UserID(пользователь, создавший пост), Text(текст поста)
-
-Все поля NOT NULL
-Поля ID, CreatedAt должны генерироваться на стороне БД. Пример:
-https://www.postgresqltutorial.com/postgresql-tutorial/postgresql-identity-column/
-
-Возвращать сгенерированные БД значения можно используя оператор RETURNING:
-
-INSERT INTO ... RETURNING *;
-
-
-Методы HTTP сервера, обеспечивающие взаимодействие с БД:
-
-1. Создание пользователя:
-POST /users
-Принимает в теле поля, требуемые для создания пользователя, возвращает созданного пользователя.
-
-2. Получение пользователя:
-GET /users/{id}
-В качестве PATH параметра принимает идентификатор пользователя.
-Возвращает в ответе созданного пользователя.
-
-3. Получение списка пользователей:
-GET /users?orderBy=...&login=...&limit=...&offset=...
-Query параметры в запросе:
-orderBy - сортировка запрашиваемых данных по колонкам: CreatedAt, Login
-login - логин пользователя к выдаче
-limit - кол-во пользователей к выдаче в запросе
-offset - кол-во пользователей к пропуску при выдаче
-
-Все query параметры опциональны (могут как быть переданы в запросе, так и опущены).
-
-* при реализации limit, offset советую изучить что такое Пагинация.
-
-4. Создание поста пользователем:
-POST /posts
-Принимает в теле поля, требуемые для создания поста, возвращает созданный пост.
-
-5. Получение списка постов пользователя:
-GET /posts?userId=...&limit=...&offset=...
-Возвращает созданные пользователями посты.
-
-Query параметры в запросе:
-userId - фильтр на идентификатор пользователя, создавшего посты
-limit - кол-во постов к выдаче в запросе
-offset - кол-во постов к пропуску при выдаче
-
-Все query параметры опциональны (могут как быть переданы в запросе, так и опущены).
-
-CREATE TABLE public.users (
-    id SERIAL PRIMARY KEY,
-    login TEXT NOT NULL,
-    full_name TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE public.posts (
-    id SERIAL PRIMARY KEY,
-    user_id INT REFERENCES public.users(id) ON DELETE CASCADE,
-    text TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-
-
-
-*/
