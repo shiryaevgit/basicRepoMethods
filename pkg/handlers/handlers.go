@@ -49,7 +49,8 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 		h.dbHandler.Mu.Lock()
 		defer h.dbHandler.Mu.Unlock()
 
-		idString := r.PathValue("id")
+		idString := r.URL.Path[len("/users/"):]
+
 		idInt, err := strconv.Atoi(idString)
 		if err != nil {
 			log.Printf("GetUserById(): %v", err)
