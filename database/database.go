@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
@@ -16,8 +17,8 @@ type UserRepository struct {
 	Ctx  context.Context
 }
 
-func NewUserRepository(ctx context.Context, dbURL string) (*UserRepository, error) {
-	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
+func NewUserRepository(terminateContext context.Context, dbURL string) (*UserRepository, error) {
+	ctxTimeOut, cancel := context.WithTimeout(terminateContext, 1*time.Second)
 	defer cancel()
 
 	conn, err := pgx.Connect(ctxTimeOut, dbURL)
@@ -25,7 +26,7 @@ func NewUserRepository(ctx context.Context, dbURL string) (*UserRepository, erro
 		return nil, fmt.Errorf("NewUserRepository() connect: %w", err)
 	}
 	var mtx sync.Mutex
-	return &UserRepository{Conn: conn, Mu: mtx, Ctx: ctx}, nil
+	return &UserRepository{Conn: conn, Mu: mtx, Ctx: terminateContext}, nil
 }
 
 func (r *UserRepository) Close() {
@@ -35,11 +36,11 @@ func (r *UserRepository) Close() {
 	}
 }
 
-func (r *UserRepository) RepoInsertUser(ctx context.Context, user models.User) (*models.User, error) {
+func (r *UserRepository) RepoInsertUser(ctx context.Context, user models.User, sqlQuery string) (*models.User, error) {
 	ctxWithDeadline, cancel := context.WithDeadline(ctx, time.Now().Add(1*time.Second))
 	defer cancel()
 
-	err := r.Conn.QueryRow(ctxWithDeadline, "INSERT INTO users (login, full_name) VALUES ($1, $2) RETURNING *", user.Login, user.FullName).
+	err := r.Conn.QueryRow(ctxWithDeadline, sqlQuery, user.Login, user.FullName).
 		Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("RepoInsertUser() QueryRow: %w", err)
@@ -47,12 +48,12 @@ func (r *UserRepository) RepoInsertUser(ctx context.Context, user models.User) (
 	return &user, nil
 }
 
-func (r *UserRepository) RepoGetUserById(ctx context.Context, id int) (*models.User, error) {
+func (r *UserRepository) RepoGetUserById(ctx context.Context, id int, sqlQuery string) (*models.User, error) {
 	ctxWithDeadline, cancel := context.WithDeadline(ctx, time.Now().Add(1*time.Second))
 	defer cancel()
 
 	var user models.User
-	err := r.Conn.QueryRow(ctxWithDeadline, "SELECT id, login, full_name, created_at FROM users WHERE id=$1", id).
+	err := r.Conn.QueryRow(ctxWithDeadline, sqlQuery, id).
 		Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("RepoGetUserById() QueryRow:  %w", err)
@@ -82,18 +83,12 @@ func (r *UserRepository) RepoGetUsersList(ctx context.Context, sqlQuery string) 
 
 }
 
-func (r *UserRepository) RepoCreatePost(ctx context.Context, post models.Post) (*models.Post, error) {
+func (r *UserRepository) RepoCreatePost(ctx context.Context, post models.Post, sqlQuery string) (*models.Post, error) {
 
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	var userId int
-	err := r.Conn.QueryRow(ctxTimeOut, "SELECT id FROM users WHERE id=$1", post.UserId).Scan(&userId)
-	if err != nil {
-		return nil, fmt.Errorf("RepoCreatePost() QueryRow(SELECT): %w", err)
-	}
-
-	err = r.Conn.QueryRow(ctxTimeOut, "INSERT INTO posts (user_id,text) VALUES ($1,$2) RETURNING *", post.UserId, post.Text).
+	err := r.Conn.QueryRow(ctxTimeOut, sqlQuery, post.UserId, post.Text).
 		Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("RepoCreatePost() QueryRow(INSERT) %w", err)
@@ -123,14 +118,12 @@ func (r *UserRepository) RepoGetAllPostsUser(ctx context.Context, sqlQuery strin
 	}
 	return &posts, nil
 }
-
-func (r *UserRepository) RepoGetAllUsers(ctx context.Context) (*[]models.User, error) {
+func (r *UserRepository) RepoGetAllUsers(ctx context.Context, sqlQuery string) (*[]models.User, error) {
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	rows, err := r.Conn.Query(ctxTimeOut, "SELECT *FROM users")
+	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
 	if err != nil {
-
 		return nil, fmt.Errorf("RepoGetAllUsers() Query: %w", err)
 	}
 
@@ -144,4 +137,15 @@ func (r *UserRepository) RepoGetAllUsers(ctx context.Context) (*[]models.User, e
 		users = append(users, user)
 	}
 	return &users, nil
+}
+func (r *UserRepository) RepoCheckUser(ctx context.Context, userId int, sqlQuery string) error {
+	var existingUserId int
+	err := r.Conn.QueryRow(ctx, sqlQuery, userId).Scan(&existingUserId)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("RepoCheckUser(): user with ID:%d not found", userId)
+		}
+		return fmt.Errorf("RepoCheckUser() QueryRow(SELECT): %w", err)
+	}
+	return nil
 }

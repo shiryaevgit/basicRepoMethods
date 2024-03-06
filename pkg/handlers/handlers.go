@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
+	"github.com/doug-martin/goqu/v9"
 	"github.com/shiryaevgit/basicRepoMethods/database"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
 	"log"
@@ -20,7 +20,6 @@ func NewHandlerServ(db *database.UserRepository) *Handler {
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
-
 		var user models.User
 		err := json.NewDecoder(r.Body).Decode(&user)
 		if err != nil {
@@ -28,7 +27,9 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
 
-		createdUser, err := h.dbHandler.RepoInsertUser(h.dbHandler.Ctx, user)
+		sqlQuery := "INSERT INTO users (login, full_name) VALUES ($1, $2) RETURNING *"
+
+		createdUser, err := h.dbHandler.RepoInsertUser(h.dbHandler.Ctx, user, sqlQuery)
 		if err != nil {
 			log.Printf("CreateUser(): %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -44,20 +45,21 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
-	h.dbHandler.Mu.Lock()
-	defer h.dbHandler.Mu.Unlock()
-
 	if r.Method == http.MethodGet {
+		h.dbHandler.Mu.Lock()
+		defer h.dbHandler.Mu.Unlock()
 
-		id := r.URL.Path[len("/users/"):]
-		idInt, err := strconv.Atoi(id)
+		idString := r.PathValue("id")
+		idInt, err := strconv.Atoi(idString)
 		if err != nil {
 			log.Printf("GetUserById(): %v", err)
 			http.Error(w, "invalid user ID", http.StatusBadRequest)
 			return
 		}
 
-		gotUser, err := h.dbHandler.RepoGetUserById(h.dbHandler.Ctx, idInt)
+		sqlQuery := "SELECT id, login, full_name, created_at FROM users WHERE id=$1"
+
+		gotUser, err := h.dbHandler.RepoGetUserById(h.dbHandler.Ctx, idInt, sqlQuery)
 		if err != nil {
 			log.Printf("GetUserById(): %v", err)
 			http.Error(w, "User not found", http.StatusNotFound)
@@ -83,27 +85,40 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetUsersList(w http.ResponseWriter, r *http.Request) {
 	h.dbHandler.Mu.Lock()
 	defer h.dbHandler.Mu.Unlock()
-
 	if r.Method == http.MethodGet {
+
 		orderBy := r.URL.Query().Get("orderBy")
 		login := r.URL.Query().Get("login")
 		limit := r.URL.Query().Get("limit")
 		offset := r.URL.Query().Get("offset")
 
-		sqlQuery := "SELECT * FROM users"
-		if login != "" {
-			sqlQuery += fmt.Sprintf(" WHERE login='%s'", login)
+		ds := goqu.From("users")
 
+		if login != "" {
+			ds = ds.Where(goqu.C("login").Eq(login))
 		}
 		if orderBy != "" {
-			sqlQuery += fmt.Sprintf(" ORDER BY %s", orderBy)
-
+			ds = ds.Order(goqu.I(orderBy).Asc())
 		}
 		if limit != "" {
-			sqlQuery += fmt.Sprintf(" LIMIT %s", limit)
+			limitInt, err := strconv.ParseUint(limit, 10, 64)
+			if err != nil {
+				http.Error(w, "invalid limit parameter", http.StatusBadRequest)
+			}
+			ds = ds.Limit(uint(limitInt))
 		}
 		if offset != "" {
-			sqlQuery += fmt.Sprintf(" OFFSET %s", offset)
+			offsetInt, err := strconv.ParseUint(offset, 10, 64)
+			if err != nil {
+				http.Error(w, "invalid offset parameter", http.StatusBadRequest)
+			}
+			ds = ds.Offset(uint(offsetInt))
+		}
+
+		sqlQuery, _, err := ds.ToSQL()
+		if err != nil {
+			log.Printf("GetUsersList() ToSQL: %v", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
 
 		gotUsers, err := h.dbHandler.RepoGetUsersList(h.dbHandler.Ctx, sqlQuery)
@@ -140,8 +155,15 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `Invalid request entered`, http.StatusBadRequest)
 			return
 		}
+		sqlQueryCheck := "SELECT id FROM users WHERE id=$1"
+		if err = h.dbHandler.RepoCheckUser(h.dbHandler.Ctx, post.UserId, sqlQueryCheck); err != nil {
+			log.Printf("CreatePost() RepoCheckUser: %v", err)
+			http.Error(w, "user not found", http.StatusBadRequest)
+			return
+		}
 
-		createdPost, err := h.dbHandler.RepoCreatePost(h.dbHandler.Ctx, *post)
+		sqlQueryCreated := "INSERT INTO posts (user_id,text) VALUES ($1,$2) RETURNING *"
+		createdPost, err := h.dbHandler.RepoCreatePost(h.dbHandler.Ctx, *post, sqlQueryCreated)
 		if err != nil {
 			log.Printf("CreatePost(): %v", err)
 			http.Error(w, "User not found", http.StatusBadRequest)
@@ -171,20 +193,27 @@ func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
 		limit := r.URL.Query().Get("limit")
 		offset := r.URL.Query().Get("offset")
 
-		sqlQuery := fmt.Sprintf("SELECT * FROM posts")
-		if userId == "" {
-			log.Printf("GetAllPostsUser() incorrect id")
-			http.Error(w, "incorrect id", http.StatusBadRequest)
-			return
-		} else {
-			sqlQuery += fmt.Sprintf(" WHERE user_id='%s'", userId)
+		ds := goqu.From("posts")
+
+		if userId != "" {
+			ds = ds.Where(goqu.C("user_id").Eq(userId))
 		}
 		if limit != "" {
-			sqlQuery += fmt.Sprintf(" LIMIT %s", limit)
+			limitInt, err := strconv.ParseUint(limit, 10, 64)
+			if err != nil {
+				http.Error(w, "invalid limit parameter", http.StatusBadRequest)
+			}
+			ds = ds.Limit(uint(limitInt))
 		}
+
 		if offset != "" {
-			sqlQuery += fmt.Sprintf(" OFFSET %s", offset)
+			offsetInt, err := strconv.ParseUint(offset, 10, 64)
+			if err != nil {
+				http.Error(w, "invalid offset parameter", http.StatusBadRequest)
+			}
+			ds = ds.Offset(uint(offsetInt))
 		}
+		sqlQuery, _, _ := ds.ToSQL()
 
 		gotPosts, err := h.dbHandler.RepoGetAllPostsUser(h.dbHandler.Ctx, sqlQuery)
 		if err != nil {
@@ -214,7 +243,8 @@ func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodGet {
 
-		gotUsers, err := h.dbHandler.RepoGetAllUsers(h.dbHandler.Ctx)
+		sqlQuery := "SELECT *FROM users"
+		gotUsers, err := h.dbHandler.RepoGetAllUsers(h.dbHandler.Ctx, sqlQuery)
 		if err != nil {
 			log.Printf("GetAllUsers(): %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
