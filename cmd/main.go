@@ -18,11 +18,11 @@ import (
 
 func main() {
 	terminateContext, cancelFunc := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancelFunc() // для чего здесь ?
+	defer cancelFunc()
 
-	configFile, err := config.LoadConfig("conf.json")
+	configFile, err := config.LoadConfig("config.yaml")
 	if err != nil {
-		log.Fatalf("config.LoadConfig(): %v", err)
+		log.Fatalf("LoadConfig(): %v", err)
 	}
 
 	db, err := database.NewUserRepository(terminateContext, configFile.DatabaseURL)

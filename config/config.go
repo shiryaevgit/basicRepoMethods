@@ -1,27 +1,35 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/spf13/viper"
 )
 
 type Config struct {
-	DatabaseURL string `json:"database_url"`
-	HTTPPort    int    `json:"http_port"`
+	ServerConfig
+	DatabaseConfig
 }
 
-func LoadConfig(filePath string) (Config, error) {
-	configFile, err := os.Open(filePath)
-	if err != nil {
-		return Config{}, fmt.Errorf("LoadConfig: os.Open():  %w", err)
-	}
-	defer configFile.Close()
+type ServerConfig struct {
+	HTTPPort int
+}
+
+type DatabaseConfig struct {
+	DatabaseURL string
+}
+
+func LoadConfig(path string) (Config, error) {
 
 	var config Config
-	decoder := json.NewDecoder(configFile)
-	if err = decoder.Decode(&config); err != nil {
-		return Config{}, fmt.Errorf("LoadConfig: Decode(): %w", err)
+	viper.SetConfigFile(path)
+
+	if err := viper.ReadInConfig(); err != nil {
+		return config, fmt.Errorf("LoadConfig() ReadInConfig: %w", err)
 	}
+
+	if err := viper.Unmarshal(&config); err != nil {
+		return config, fmt.Errorf("LoadConfig() Unmarshal: %w", err)
+	}
+
 	return config, nil
 }
