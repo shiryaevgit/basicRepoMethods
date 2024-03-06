@@ -3,9 +3,9 @@ package handlers_test
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/shiryaevgit/myProject/database"
-	"github.com/shiryaevgit/myProject/pkg/handlers"
-	"github.com/shiryaevgit/myProject/pkg/models"
+	"github.com/shiryaevgit/basicRepoMethods/database"
+	"github.com/shiryaevgit/basicRepoMethods/pkg/handlers"
+	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
 	"github.com/stretchr/testify/mock"
 	"io/ioutil"
 	"net/http"

@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/shiryaevgit/myProject/config"
-	"github.com/shiryaevgit/myProject/database"
-	"github.com/shiryaevgit/myProject/pkg/handlers"
-	"github.com/shiryaevgit/myProject/pkg/loggers/logrus"
-	"github.com/shiryaevgit/myProject/pkg/loggers/standLog"
-	"github.com/shiryaevgit/myProject/pkg/server"
+	"github.com/shiryaevgit/basicRepoMethods/config"
+	"github.com/shiryaevgit/basicRepoMethods/database"
+	"github.com/shiryaevgit/basicRepoMethods/pkg/handlers"
+	"github.com/shiryaevgit/basicRepoMethods/pkg/loggers/logrus"
+	"github.com/shiryaevgit/basicRepoMethods/pkg/loggers/standLog"
+	"github.com/shiryaevgit/basicRepoMethods/pkg/server"
 	"log"
 	"net/http"
 	"os"
@@ -17,13 +17,15 @@ import (
 )
 
 func main() {
+	terminateContext, cancelFunc := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancelFunc() // для чего здесь ?
 
 	configFile, err := config.LoadConfig("conf.json")
 	if err != nil {
 		log.Fatalf("config.LoadConfig(): %v", err)
 	}
-	ctxDB := context.Background()
-	db, err := database.NewUserRepository(configFile.DatabaseURL, ctxDB)
+
+	db, err := database.NewUserRepository(terminateContext, configFile.DatabaseURL)
 	if err != nil {
 		log.Fatalf("unable to connect to database: %v", err)
 	}
@@ -39,7 +41,7 @@ func main() {
 	// logrus
 	logger, fileLogrus, err := logrus.SetupLogger("logrus.log")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("SetupLogger: %v", err)
 	}
 	logger.Info("This log message is configured using loggerconfig package")
 	defer fileLogrus.Close()
@@ -65,9 +67,8 @@ func main() {
 		}
 	})
 
-	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
 	portStr := strconv.Itoa(configFile.HTTPPort)
-	err = srv.Run(portStr, mux, ctx)
+	err = srv.Run(portStr, mux, terminateContext)
 	switch {
 	case err != nil && errors.Is(err, http.ErrServerClosed):
 		log.Printf("Run(): %v", err)

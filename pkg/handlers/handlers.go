@@ -3,8 +3,8 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/shiryaevgit/myProject/database"
-	"github.com/shiryaevgit/myProject/pkg/models"
+	"github.com/shiryaevgit/basicRepoMethods/database"
+	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
 	"log"
 	"net/http"
 	"strconv"
@@ -21,24 +21,24 @@ func NewHandlerServ(db *database.UserRepository) *Handler {
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 
-		user := new(models.User)
-		err := json.NewDecoder(r.Body).Decode(user)
+		var user models.User
+		err := json.NewDecoder(r.Body).Decode(&user)
 		if err != nil {
-			log.Printf("CreateUser: %v", err)
+			log.Printf("CreateUser(): %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
 
-		err = h.dbHandler.Conn.QueryRow(h.dbHandler.Ctx, "INSERT INTO users (login, full_name) VALUES ($1, $2) RETURNING *", user.Login, user.FullName).
-			Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
+		createdUser, err := h.dbHandler.RepoInsertUser(h.dbHandler.Ctx, user)
 		if err != nil {
-			log.Printf("CreateUser() QueryRow: %v", err)
+			log.Printf("CreateUser(): %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
-		respJson, err := json.Marshal(user)
+
+		respJson, err := json.Marshal(createdUser)
 		w.Header().Set("Content-Type", "application/json")
 		_, err = w.Write(respJson)
 		if err != nil {
-			log.Printf("CreateUser() Marshal(): %v", err)
+			log.Printf("CreateUser() Marshal: %v", err)
 		}
 	}
 }
@@ -52,35 +52,31 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Path[len("/users/"):]
 		idInt, err := strconv.Atoi(id)
 		if err != nil {
-			log.Printf("GetUserById: %v", err)
+			log.Printf("GetUserById(): %v", err)
 			http.Error(w, "invalid user ID", http.StatusBadRequest)
 			return
 		}
 
-		var user models.User
-
-		err = h.dbHandler.Conn.QueryRow(h.dbHandler.Ctx, "SELECT id, login, full_name, created_at FROM users WHERE id=$1", idInt).
-			Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
+		gotUser, err := h.dbHandler.RepoGetUserById(h.dbHandler.Ctx, idInt)
 		if err != nil {
-			log.Printf("GetUserById:  %v", err)
+			log.Printf("GetUserById(): %v", err)
 			http.Error(w, "User not found", http.StatusNotFound)
 			return
 		}
 
-		responseJSON, err := json.Marshal(user)
+		responseJSON, err := json.Marshal(gotUser)
 		if err != nil {
-			log.Printf("GetUserById: %v", err)
+			log.Printf("GetUserById(): %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_, err = w.Write(responseJSON)
 		if err != nil {
-			log.Printf("GetUserById: %v", err)
+			log.Printf("GetUserById(): %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		fmt.Println(user)
 	}
 }
 
@@ -109,41 +105,26 @@ func (h *Handler) GetUsersList(w http.ResponseWriter, r *http.Request) {
 		if offset != "" {
 			sqlQuery += fmt.Sprintf(" OFFSET %s", offset)
 		}
-		rows, err := h.dbHandler.Conn.Query(h.dbHandler.Ctx, sqlQuery)
+
+		gotUsers, err := h.dbHandler.RepoGetUsersList(h.dbHandler.Ctx, sqlQuery)
+
 		if err != nil {
+			log.Printf("GetUsersList() RepoGetUsersList: %v", err)
 			http.Error(w, "The entered data is incorrect", http.StatusBadRequest)
-			log.Printf("GetUsersList():%v", err)
-			return
 		}
 
-		var users []models.User
-		for rows.Next() {
-			user := *new(models.User)
-			err = rows.Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
-			if err != nil {
-				http.Error(w, "internal error", http.StatusInternalServerError)
-				log.Printf("GetUsersList():%v", err)
-				return
-			}
-			users = append(users, user)
-		}
-
-		respJson, err := json.Marshal(users)
+		respJson, err := json.Marshal(gotUsers)
 		if err != nil {
-			fmt.Printf("GetUsersList() Marshal(): %v", err)
+			log.Printf("GetUsersList() Marshal: %v", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_, err = w.Write(respJson)
 		if err != nil {
+			log.Printf("GetUsersList() Write: %v", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
-			log.Printf("GetUsersList() Write(): %v", err)
 		}
-
-		//for _, u := range users {
-		//	fmt.Printf("ID:%v\nLogin:%v\nFullName:%v\nCreated at:%v\n\n", u.ID, u.Login, u.FullName, u.CreatedAt.Format("2006-01-02 15:04:05"))
-		//}
 	}
 }
 
@@ -155,42 +136,30 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		decoder := json.NewDecoder(r.Body)
 		err := decoder.Decode(post)
 		if err != nil {
-			http.Error(w, `Invalid request entered`, http.StatusBadRequest)
 			log.Printf("CreatePost(): %v", err)
+			http.Error(w, `Invalid request entered`, http.StatusBadRequest)
 			return
 		}
 
-		var userId int
-		err = h.dbHandler.Conn.QueryRow(h.dbHandler.Ctx, "SELECT id FROM users WHERE id=$1", post.UserId).Scan(&userId)
+		createdPost, err := h.dbHandler.RepoCreatePost(h.dbHandler.Ctx, *post)
 		if err != nil {
+			log.Printf("CreatePost(): %v", err)
 			http.Error(w, "User not found", http.StatusBadRequest)
-			log.Printf("CreatePost() QueryRow() SELECT: %v", err)
-			return
 		}
 
-		err = h.dbHandler.Conn.QueryRow(h.dbHandler.Ctx, "INSERT INTO posts (user_id,text) VALUES ($1,$2) RETURNING *", post.UserId, post.Text).
-			Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
+		respJson, err := json.Marshal(createdPost)
 		if err != nil {
+			log.Printf("CreatePost() Marshal: %v", err)
 			http.Error(w, "Internal error", http.StatusBadRequest)
-			log.Printf("CreatePost() QueryRow() INSERT: %v", err)
-			return
-		}
-
-		respJson, err := json.Marshal(post)
-		if err != nil {
-			http.Error(w, "Internal error", http.StatusBadRequest)
-			log.Printf("CreatePost() Marshal(): %v", err)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_, err = w.Write(respJson)
 		if err != nil {
+			log.Printf("CreatePost() Write: %v", err)
 			http.Error(w, "Internal error", http.StatusBadRequest)
-			log.Printf("CreatePost() Write(): %v", err)
 		}
-
 	}
-
 }
 
 func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
@@ -204,8 +173,8 @@ func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
 
 		sqlQuery := fmt.Sprintf("SELECT * FROM posts")
 		if userId == "" {
-			http.Error(w, "incorrect id", http.StatusBadRequest)
 			log.Printf("GetAllPostsUser() incorrect id")
+			http.Error(w, "incorrect id", http.StatusBadRequest)
 			return
 		} else {
 			sqlQuery += fmt.Sprintf(" WHERE user_id='%s'", userId)
@@ -217,38 +186,24 @@ func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
 			sqlQuery += fmt.Sprintf(" OFFSET %s", offset)
 		}
 
-		rows, err := h.dbHandler.Conn.Query(h.dbHandler.Ctx, sqlQuery)
+		gotPosts, err := h.dbHandler.RepoGetAllPostsUser(h.dbHandler.Ctx, sqlQuery)
 		if err != nil {
+			log.Printf("GetAllPostsUser() RepoGetAllPostsUser: %v", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
-			log.Printf("GetAllPostsUser() Query()%v", err)
-			return
-		}
-		defer rows.Close()
-
-		var posts []models.Post
-		for rows.Next() {
-			var post models.Post
-			err = rows.Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
-			if err != nil {
-				http.Error(w, "Internal error", http.StatusInternalServerError)
-				log.Printf("GetAllPostsUser() Scan()%v", err)
-				return
-			}
-			posts = append(posts, post)
 		}
 
-		resJson, err := json.Marshal(posts)
+		resJson, err := json.Marshal(gotPosts)
 		if err != nil {
+			log.Printf("GetAllPostsUser() Marshal: %v", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
-			log.Printf("GetAllPostsUser() Marshal(): %v", err)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_, err = w.Write(resJson)
 		if err != nil {
+			log.Printf("GetAllPostsUser() Write: %v", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
-			log.Printf("GetAllPostsUser() Write(): %v", err)
 		}
 	}
 }
@@ -258,28 +213,25 @@ func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	defer h.dbHandler.Mu.Unlock()
 
 	if r.Method == http.MethodGet {
-		rows, err := h.dbHandler.Conn.Query(h.dbHandler.Ctx, "SELECT *FROM users")
+
+		gotUsers, err := h.dbHandler.RepoGetAllUsers(h.dbHandler.Ctx)
 		if err != nil {
-			log.Printf("GetAllUsers: %v", err)
+			log.Printf("GetAllUsers(): %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+
+		resJson, err := json.Marshal(gotUsers)
+		if err != nil {
+			log.Printf("GetAllUsers() Marshal: %v", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
 		}
 
-		var users []models.User
-
-		for rows.Next() {
-			var user models.User
-			err = rows.Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
-			if err != nil {
-				log.Printf("GetAllUsers: %v", err)
-				http.Error(w, "Internal server error", http.StatusInternalServerError)
-			}
-			users = append(users, user)
-		}
-
-		for _, u := range users {
-			fmt.Printf("ID: %v\nLogin: %v\nFullName: %v\nCreatedAt: %v\n\n", u.ID, u.Login, u.FullName, u.CreatedAt.Format("2006-01-02 15:04:05"))
-
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write(resJson)
+		if err != nil {
+			log.Printf("GetAllUsers() Write: %v", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
 		}
 	}
 }

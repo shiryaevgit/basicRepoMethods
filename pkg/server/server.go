@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
@@ -12,7 +12,7 @@ type Server struct {
 }
 
 func (s *Server) Run(port string, mux *http.ServeMux, ctx context.Context) error {
-	//portStr := strconv.Itoa(port)
+
 	s.httpServer = &http.Server{
 		Addr:           ":" + port,
 		Handler:        mux,
@@ -23,10 +23,12 @@ func (s *Server) Run(port string, mux *http.ServeMux, ctx context.Context) error
 	go func() {
 		<-ctx.Done()
 
-		ctx, _ := context.WithTimeout(context.Background(), time.Second*3)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+		defer cancel()
+
 		err := s.httpServer.Shutdown(ctx)
 		if err != nil {
-			_ = fmt.Errorf("Run: s.httpServer.Shutdown(ctx):  %v", err)
+			log.Printf("Run() Shutdown:  %v", err)
 			return
 		}
 	}()
