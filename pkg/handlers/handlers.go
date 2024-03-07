@@ -46,11 +46,9 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
-
 	h.dbHandler.Mu.Lock()
 	defer h.dbHandler.Mu.Unlock()
 
-	//idString := r.URL.Path[len("/users/"):]
 	idString := r.PathValue("id")
 	fmt.Println(idString)
 	idInt, err := strconv.Atoi(idString)
@@ -157,6 +155,7 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sqlQueryCheck := "SELECT id FROM users WHERE id=$1"
+
 	if err = h.dbHandler.RepoCheckUser(h.dbHandler.Ctx, post.UserId, sqlQueryCheck); err != nil {
 		log.Printf("CreatePost() RepoCheckUser: %v", err)
 		http.Error(w, "user not found", http.StatusBadRequest)
@@ -240,7 +239,9 @@ func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	h.dbHandler.Mu.Lock()
 	defer h.dbHandler.Mu.Unlock()
 
-	sqlQuery := "SELECT *FROM users"
+	//sqlQuery := "SELECT *FROM users"
+	sqlQuery, _, _ := goqu.From("users").ToSQL()
+
 	gotUsers, err := h.dbHandler.RepoGetAllUsers(h.dbHandler.Ctx, sqlQuery)
 	if err != nil {
 		log.Printf("GetAllUsers(): %v", err)
