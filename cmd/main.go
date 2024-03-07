@@ -17,6 +17,7 @@ import (
 )
 
 func main() {
+
 	terminateContext, cancelFunc := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancelFunc()
 
@@ -50,22 +51,12 @@ func main() {
 	mux := http.NewServeMux()
 	handlerDb := handlers.NewHandlerServ(db)
 
-	mux.HandleFunc("/users/all", handlerDb.GetAllUsers)
-	mux.HandleFunc("/users/", handlerDb.GetUserById)
-	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			handlerDb.GetUsersList(w, r)
-		} else if r.Method == http.MethodPost {
-			handlerDb.CreateUser(w, r)
-		}
-	})
-	mux.HandleFunc("/posts", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			handlerDb.CreatePost(w, r)
-		} else if r.Method == http.MethodGet {
-			handlerDb.GetAllPostsUser(w, r)
-		}
-	})
+	mux.HandleFunc("POST /users", handlerDb.CreateUser)
+	mux.HandleFunc("GET /users/{id}", handlerDb.GetUserById)
+	mux.HandleFunc("GET /users/all", handlerDb.GetAllUsers)
+	mux.HandleFunc("GET /users", handlerDb.GetUsersList)
+	mux.HandleFunc("POST /posts", handlerDb.CreatePost)
+	mux.HandleFunc("GET /posts", handlerDb.GetAllPostsUser)
 
 	portStr := strconv.Itoa(configFile.HTTPPort)
 	err = srv.Run(portStr, mux, terminateContext)
