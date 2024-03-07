@@ -142,8 +142,8 @@ func (r *UserRepository) RepoGetAllUsers(ctx context.Context, sqlQuery string) (
 	return &users, nil
 }
 func (r *UserRepository) RepoCheckUser(ctx context.Context, userId int, sqlQuery string) error {
-	var existingUserId int
-	err := r.Conn.QueryRow(ctx, sqlQuery, userId).Scan(&existingUserId)
+
+	err := r.Conn.QueryRow(ctx, sqlQuery, userId).Scan(&userId)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("RepoCheckUser(): user with ID:%d not found", userId)
