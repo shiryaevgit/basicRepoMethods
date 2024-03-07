@@ -144,8 +144,6 @@ func (h *Handler) GetUsersList(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 
-	defer r.Body.Close()
-
 	post := new(models.Post)
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(post)
@@ -239,7 +237,6 @@ func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	h.dbHandler.Mu.Lock()
 	defer h.dbHandler.Mu.Unlock()
 
-	//sqlQuery := "SELECT *FROM users"
 	sqlQuery, _, _ := goqu.From("users").ToSQL()
 
 	gotUsers, err := h.dbHandler.RepoGetAllUsers(h.dbHandler.Ctx, sqlQuery)

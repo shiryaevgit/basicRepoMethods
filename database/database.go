@@ -70,7 +70,8 @@ func (r *UserRepository) RepoGetUsersList(ctx context.Context, sqlQuery string) 
 		return nil, fmt.Errorf("RepoGetUsersList() Query:%w", err)
 	}
 
-	var users []models.User
+	users := make([]models.User, 0, 100)
+
 	for rows.Next() {
 		user := *new(models.User)
 		err = rows.Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
@@ -107,7 +108,8 @@ func (r *UserRepository) RepoGetAllPostsUser(ctx context.Context, sqlQuery strin
 	}
 	defer rows.Close()
 
-	var posts []models.Post
+	posts := make([]models.Post, 0, 100)
+
 	for rows.Next() {
 		var post models.Post
 		err = rows.Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
@@ -127,7 +129,8 @@ func (r *UserRepository) RepoGetAllUsers(ctx context.Context, sqlQuery string) (
 		return nil, fmt.Errorf("RepoGetAllUsers() Query: %w", err)
 	}
 
-	var users []models.User
+	users := make([]models.User, 0, 100)
+
 	for rows.Next() {
 		var user models.User
 		err = rows.Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
