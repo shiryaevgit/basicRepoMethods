@@ -153,6 +153,10 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sqlQueryCheck := "SELECT id FROM users WHERE id=$1"
+	//var userId int
+	//sqlQueryCheck, _, _ := goqu.Select("id").From("users").
+	//	Where(goqu.Ex{"id": userId}).
+	//	ToSQL()
 
 	if err = h.dbHandler.RepoCheckUser(h.dbHandler.Ctx, post.UserId, sqlQueryCheck); err != nil {
 		log.Printf("CreatePost() RepoCheckUser: %v", err)
