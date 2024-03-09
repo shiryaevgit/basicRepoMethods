@@ -3,7 +3,6 @@ package handlers_test
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/shiryaevgit/basicRepoMethods/database"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/handlers"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
 	"github.com/stretchr/testify/mock"

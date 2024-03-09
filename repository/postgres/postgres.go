@@ -1,4 +1,4 @@
-package database
+package postgres
 
 import (
 	"context"
@@ -13,32 +13,32 @@ import (
 	"time"
 )
 
-type UserRepository struct {
+type RepoPostgres struct {
 	Conn *pgx.Conn
 	Mu   sync.Mutex
 	Ctx  context.Context
 }
 
-func NewUserRepository(terminateContext context.Context, dbURL string) (*UserRepository, error) {
+func NewRepoPostgres(terminateContext context.Context, dbURL string) (*RepoPostgres, error) {
 	ctxTimeOut, cancel := context.WithTimeout(terminateContext, 1*time.Second)
 	defer cancel()
 
 	conn, err := pgx.Connect(ctxTimeOut, dbURL)
 	if err != nil {
-		return nil, fmt.Errorf("NewUserRepository() connect: %w", err)
+		return nil, fmt.Errorf("NewRepoPostgres() connect: %w", err)
 	}
 	var mtx sync.Mutex
-	return &UserRepository{Conn: conn, Mu: mtx, Ctx: terminateContext}, nil
+	return &RepoPostgres{Conn: conn, Mu: mtx, Ctx: terminateContext}, nil
 }
 
-func (r *UserRepository) Close() {
+func (r *RepoPostgres) Close() {
 	err := r.Conn.Close(context.Background())
 	if err != nil {
 		log.Printf("Close(): %v", err)
 	}
 }
 
-func (r *UserRepository) RepoInsertUser(ctx context.Context, user models.User) (*models.User, error) {
+func (r *RepoPostgres) CreateUser(ctx context.Context, user models.User) (*models.User, error) {
 	ctxWithDeadline, cancel := context.WithDeadline(ctx, time.Now().Add(1*time.Second))
 	defer cancel()
 
@@ -49,18 +49,18 @@ func (r *UserRepository) RepoInsertUser(ctx context.Context, user models.User) (
 		ToSQL()
 
 	if err != nil {
-		return nil, fmt.Errorf("RepoGetUserById() ToSQL:  %w", err)
+		return nil, fmt.Errorf("GetUserById() ToSQL:  %w", err)
 	}
 
 	err = r.Conn.QueryRow(ctxWithDeadline, sqlQuery).
 		Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 	if err != nil {
-		return nil, fmt.Errorf("RepoInsertUser() QueryRow: %w", err)
+		return nil, fmt.Errorf(" CreateUser() QueryRow: %w", err)
 	}
 	return &user, nil
 }
 
-func (r *UserRepository) RepoGetUserById(ctx context.Context, userId int) (*models.User, error) {
+func (r *RepoPostgres) GetUserById(ctx context.Context, userId int) (*models.User, error) {
 	ctxWithDeadline, cancel := context.WithDeadline(ctx, time.Now().Add(1*time.Second))
 	defer cancel()
 
@@ -70,19 +70,19 @@ func (r *UserRepository) RepoGetUserById(ctx context.Context, userId int) (*mode
 		ToSQL()
 
 	if err != nil {
-		return nil, fmt.Errorf("RepoGetUserById() ToSQL:  %w", err)
+		return nil, fmt.Errorf("GetUserById() ToSQL:  %w", err)
 	}
 
 	var user models.User
 	err = r.Conn.QueryRow(ctxWithDeadline, sqlQuery).
 		Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 	if err != nil {
-		return nil, fmt.Errorf("RepoGetUserById() QueryRow:  %w", err)
+		return nil, fmt.Errorf("GetUserById() QueryRow:  %w", err)
 	}
 	return &user, err
 }
 
-func (r *UserRepository) RepoGetUsersList(ctx context.Context, login, orderBy, limit, offset string) (*[]models.User, error) {
+func (r *RepoPostgres) GetUsersList(ctx context.Context, login, orderBy, limit, offset string) (*[]models.User, error) {
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
@@ -97,26 +97,26 @@ func (r *UserRepository) RepoGetUsersList(ctx context.Context, login, orderBy, l
 	if limit != "" {
 		limitInt, err := strconv.ParseUint(limit, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("RepoGetUsersList() ParseUint(limit): %w", err)
+			return nil, fmt.Errorf("GetUsersList() ParseUint(limit): %w", err)
 		}
 		ds = ds.Limit(uint(limitInt))
 	}
 	if offset != "" {
 		offsetInt, err := strconv.ParseUint(offset, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("RepoGetUsersList() ParseUint(offset): %w", err)
+			return nil, fmt.Errorf("GetUsersList() ParseUint(offset): %w", err)
 		}
 		ds = ds.Offset(uint(offsetInt))
 	}
 
 	sqlQuery, _, err := ds.ToSQL()
 	if err != nil {
-		return nil, fmt.Errorf("RepoGetUsersList() ToSQL: %w", err)
+		return nil, fmt.Errorf("GetUsersList() ToSQL: %w", err)
 	}
 
 	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
 	if err != nil {
-		return nil, fmt.Errorf("RepoGetUsersList() Query:%w", err)
+		return nil, fmt.Errorf("GetUsersList() Query:%w", err)
 	}
 
 	users := make([]models.User, 0, 100)
@@ -125,7 +125,7 @@ func (r *UserRepository) RepoGetUsersList(ctx context.Context, login, orderBy, l
 		user := *new(models.User)
 		err = rows.Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 		if err != nil {
-			return nil, fmt.Errorf("RepoGetUsersList() Scan:%w", err)
+			return nil, fmt.Errorf("GetUsersList() Scan:%w", err)
 		}
 		users = append(users, user)
 	}
@@ -133,7 +133,7 @@ func (r *UserRepository) RepoGetUsersList(ctx context.Context, login, orderBy, l
 
 }
 
-func (r *UserRepository) RepoCreatePost(ctx context.Context, post models.Post) (*models.Post, error) {
+func (r *RepoPostgres) CreatePost(ctx context.Context, post models.Post) (*models.Post, error) {
 
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
@@ -145,18 +145,18 @@ func (r *UserRepository) RepoCreatePost(ctx context.Context, post models.Post) (
 		ToSQL()
 
 	if err != nil {
-		return nil, fmt.Errorf("RepoCreatePost() ToSQL:  %w", err)
+		return nil, fmt.Errorf("CreatePost() ToSQL:  %w", err)
 	}
 
 	err = r.Conn.QueryRow(ctxTimeOut, sqlQuery).
 		Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
 	if err != nil {
-		return nil, fmt.Errorf("RepoCreatePost() QueryRow() %w", err)
+		return nil, fmt.Errorf("CreatePost() QueryRow() %w", err)
 	}
 	return &post, nil
 }
 
-func (r *UserRepository) RepoGetAllPostsUser(ctx context.Context, userId, limit, offset string) (*[]models.Post, error) {
+func (r *RepoPostgres) GetAllPostsUser(ctx context.Context, userId, limit, offset string) (*[]models.Post, error) {
 
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
@@ -169,7 +169,7 @@ func (r *UserRepository) RepoGetAllPostsUser(ctx context.Context, userId, limit,
 	if limit != "" {
 		limitInt, err := strconv.ParseUint(limit, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("RepoGetAllUsers() ParseUint(limit): %w", err)
+			return nil, fmt.Errorf("GetAllUsers() ParseUint(limit): %w", err)
 		}
 		ds = ds.Limit(uint(limitInt))
 	}
@@ -177,7 +177,7 @@ func (r *UserRepository) RepoGetAllPostsUser(ctx context.Context, userId, limit,
 	if offset != "" {
 		offsetInt, err := strconv.ParseUint(offset, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("RepoGetAllUsers() ParseUint(offset): %w", err)
+			return nil, fmt.Errorf("GetAllUsers() ParseUint(offset): %w", err)
 		}
 		ds = ds.Offset(uint(offsetInt))
 	}
@@ -185,7 +185,7 @@ func (r *UserRepository) RepoGetAllPostsUser(ctx context.Context, userId, limit,
 
 	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
 	if err != nil {
-		return nil, fmt.Errorf("RepoGetAllPostsUser() Query:%w", err)
+		return nil, fmt.Errorf("GetAllPostsUser() Query:%w", err)
 	}
 	defer rows.Close()
 
@@ -195,13 +195,13 @@ func (r *UserRepository) RepoGetAllPostsUser(ctx context.Context, userId, limit,
 		var post models.Post
 		err = rows.Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
 		if err != nil {
-			return nil, fmt.Errorf("RepoGetAllPostsUser() Scan:%w", err)
+			return nil, fmt.Errorf("GetAllPostsUser() Scan:%w", err)
 		}
 		posts = append(posts, post)
 	}
 	return &posts, nil
 }
-func (r *UserRepository) RepoGetAllUsers(ctx context.Context) (*[]models.User, error) {
+func (r *RepoPostgres) GetAllUsers(ctx context.Context) (*[]models.User, error) {
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
@@ -209,7 +209,7 @@ func (r *UserRepository) RepoGetAllUsers(ctx context.Context) (*[]models.User, e
 
 	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
 	if err != nil {
-		return nil, fmt.Errorf("RepoGetAllUsers() Query: %w", err)
+		return nil, fmt.Errorf("GetAllUsers() Query: %w", err)
 	}
 
 	users := make([]models.User, 0, 100)
@@ -218,13 +218,13 @@ func (r *UserRepository) RepoGetAllUsers(ctx context.Context) (*[]models.User, e
 		var user models.User
 		err = rows.Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 		if err != nil {
-			return nil, fmt.Errorf("RepoGetAllUsers() Scan: %w", err)
+			return nil, fmt.Errorf("GetAllUsers() Scan: %w", err)
 		}
 		users = append(users, user)
 	}
 	return &users, nil
 }
-func (r *UserRepository) RepoCheckUser(ctx context.Context, userId int) error {
+func (r *RepoPostgres) CheckUser(ctx context.Context, userId int) error {
 
 	sqlQueryCheck, _, err := goqu.Select("id").
 		From("users").
@@ -232,16 +232,16 @@ func (r *UserRepository) RepoCheckUser(ctx context.Context, userId int) error {
 		ToSQL()
 
 	if err != nil {
-		return fmt.Errorf("RepoCheckUser() ToSQL:%w", err)
+		return fmt.Errorf("CheckUser() ToSQL:%w", err)
 	}
 
 	var id int
 	err = r.Conn.QueryRow(ctx, sqlQueryCheck).Scan(&id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("RepoCheckUser(): user with ID:%d not found", userId)
+			return fmt.Errorf("CheckUser(): user with ID:%d not found", userId)
 		}
-		return fmt.Errorf("RepoCheckUser() QueryRow(SELECT): %w", err)
+		return fmt.Errorf("CheckUser() QueryRow(SELECT): %w", err)
 	}
 	return nil
 }

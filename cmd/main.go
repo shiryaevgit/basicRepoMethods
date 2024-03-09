@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"github.com/shiryaevgit/basicRepoMethods/config"
-	"github.com/shiryaevgit/basicRepoMethods/database"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/handlers"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/loggers/logrus"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/loggers/standLog"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/server"
+	"github.com/shiryaevgit/basicRepoMethods/repository/postgres"
 	"log"
 	"net/http"
 	"os"
@@ -26,9 +26,9 @@ func main() {
 		log.Fatalf("LoadConfig(): %v", err)
 	}
 
-	db, err := database.NewUserRepository(terminateContext, configFile.DatabaseURL)
+	db, err := postgres.NewRepoPostgres(terminateContext, configFile.PostgresURL)
 	if err != nil {
-		log.Fatalf("unable to connect to database: %v", err)
+		log.Fatalf("unable to connect to postgres: %v", err)
 	}
 	defer db.Close()
 

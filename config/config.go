@@ -7,15 +7,15 @@ import (
 
 type Config struct {
 	ServerConfig
-	DatabaseConfig
+	PostgresConfig
 }
 
 type ServerConfig struct {
 	HTTPPort int
 }
 
-type DatabaseConfig struct {
-	DatabaseURL string
+type PostgresConfig struct {
+	PostgresURL string
 }
 
 func LoadConfig(path string) (Config, error) {
