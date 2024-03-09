@@ -156,10 +156,32 @@ func (r *UserRepository) RepoCreatePost(ctx context.Context, post models.Post) (
 	return &post, nil
 }
 
-func (r *UserRepository) RepoGetAllPostsUser(ctx context.Context, sqlQuery string) (*[]models.Post, error) {
+func (r *UserRepository) RepoGetAllPostsUser(ctx context.Context, userId, limit, offset string) (*[]models.Post, error) {
 
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
+
+	ds := goqu.From("posts")
+
+	if userId != "" {
+		ds = ds.Where(goqu.C("user_id").Eq(userId))
+	}
+	if limit != "" {
+		limitInt, err := strconv.ParseUint(limit, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("RepoGetAllUsers() ParseUint(limit): %w", err)
+		}
+		ds = ds.Limit(uint(limitInt))
+	}
+
+	if offset != "" {
+		offsetInt, err := strconv.ParseUint(offset, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("RepoGetAllUsers() ParseUint(offset): %w", err)
+		}
+		ds = ds.Offset(uint(offsetInt))
+	}
+	sqlQuery, _, _ := ds.ToSQL()
 
 	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
 	if err != nil {
@@ -179,9 +201,11 @@ func (r *UserRepository) RepoGetAllPostsUser(ctx context.Context, sqlQuery strin
 	}
 	return &posts, nil
 }
-func (r *UserRepository) RepoGetAllUsers(ctx context.Context, sqlQuery string) (*[]models.User, error) {
+func (r *UserRepository) RepoGetAllUsers(ctx context.Context) (*[]models.User, error) {
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
+
+	sqlQuery, _, _ := goqu.From("users").ToSQL()
 
 	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
 	if err != nil {

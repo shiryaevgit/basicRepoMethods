@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/doug-martin/goqu/v9"
 	"github.com/shiryaevgit/basicRepoMethods/database"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
 	"log"
@@ -155,29 +154,7 @@ func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
 	limit := r.URL.Query().Get("limit")
 	offset := r.URL.Query().Get("offset")
 
-	ds := goqu.From("posts")
-
-	if userId != "" {
-		ds = ds.Where(goqu.C("user_id").Eq(userId))
-	}
-	if limit != "" {
-		limitInt, err := strconv.ParseUint(limit, 10, 64)
-		if err != nil {
-			http.Error(w, "invalid limit parameter", http.StatusBadRequest)
-		}
-		ds = ds.Limit(uint(limitInt))
-	}
-
-	if offset != "" {
-		offsetInt, err := strconv.ParseUint(offset, 10, 64)
-		if err != nil {
-			http.Error(w, "invalid offset parameter", http.StatusBadRequest)
-		}
-		ds = ds.Offset(uint(offsetInt))
-	}
-	sqlQuery, _, _ := ds.ToSQL()
-
-	gotPosts, err := h.dbHandler.RepoGetAllPostsUser(h.dbHandler.Ctx, sqlQuery)
+	gotPosts, err := h.dbHandler.RepoGetAllPostsUser(h.dbHandler.Ctx, userId, limit, offset)
 	if err != nil {
 		log.Printf("GetAllPostsUser() RepoGetAllPostsUser: %v", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -202,9 +179,7 @@ func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	h.dbHandler.Mu.Lock()
 	defer h.dbHandler.Mu.Unlock()
 
-	sqlQuery, _, _ := goqu.From("users").ToSQL()
-
-	gotUsers, err := h.dbHandler.RepoGetAllUsers(h.dbHandler.Ctx, sqlQuery)
+	gotUsers, err := h.dbHandler.RepoGetAllUsers(h.dbHandler.Ctx)
 	if err != nil {
 		log.Printf("GetAllUsers(): %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
