@@ -119,25 +119,14 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `Invalid request entered`, http.StatusBadRequest)
 		return
 	}
-	sqlQueryCheck := "SELECT id FROM users WHERE id=$1"
 
-	//sqlQueryCheck, _, _ := goqu.Select("id").From("users").
-	//	Where(goqu.Ex{"id": post.UserId}).
-	//	ToSQL()
-
-	//var userId int
-	//sqlQueryCheck, _, _ := goqu.Select("id").From("users").
-	//	Where(goqu.Ex{"id": userId}).
-	//	ToSQL()
-
-	if err = h.dbHandler.RepoCheckUser(h.dbHandler.Ctx, post.UserId, sqlQueryCheck); err != nil {
-		log.Printf("CreatePost() RepoCheckUser: %v", err)
+	if err = h.dbHandler.RepoCheckUser(h.dbHandler.Ctx, post.UserId); err != nil {
+		log.Printf("CreatePost(): %v", err)
 		http.Error(w, "user not found", http.StatusBadRequest)
 		return
 	}
 
-	sqlQueryCreated := "INSERT INTO posts (user_id,text) VALUES ($1,$2) RETURNING *"
-	createdPost, err := h.dbHandler.RepoCreatePost(h.dbHandler.Ctx, *post, sqlQueryCreated)
+	createdPost, err := h.dbHandler.RepoCreatePost(h.dbHandler.Ctx, *post)
 	if err != nil {
 		log.Printf("CreatePost(): %v", err)
 		http.Error(w, "User not found", http.StatusBadRequest)

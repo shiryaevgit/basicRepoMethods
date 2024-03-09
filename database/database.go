@@ -60,13 +60,13 @@ func (r *UserRepository) RepoInsertUser(ctx context.Context, user models.User) (
 	return &user, nil
 }
 
-func (r *UserRepository) RepoGetUserById(ctx context.Context, id int) (*models.User, error) {
+func (r *UserRepository) RepoGetUserById(ctx context.Context, userId int) (*models.User, error) {
 	ctxWithDeadline, cancel := context.WithDeadline(ctx, time.Now().Add(1*time.Second))
 	defer cancel()
 
 	sqlQuery, _, err := goqu.From("users").
 		Select("id", "login", "full_name", "created_at").
-		Where(goqu.Ex{"id": id}).
+		Where(goqu.Ex{"id": userId}).
 		ToSQL()
 
 	if err != nil {
@@ -133,15 +133,25 @@ func (r *UserRepository) RepoGetUsersList(ctx context.Context, login, orderBy, l
 
 }
 
-func (r *UserRepository) RepoCreatePost(ctx context.Context, post models.Post, sqlQuery string) (*models.Post, error) {
+func (r *UserRepository) RepoCreatePost(ctx context.Context, post models.Post) (*models.Post, error) {
 
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	err := r.Conn.QueryRow(ctxTimeOut, sqlQuery, post.UserId, post.Text).
+	sqlQuery, _, err := goqu.Insert("posts").
+		Cols("user_id", "text").
+		Vals(goqu.Vals{post.UserId, post.Text}).
+		Returning("*").
+		ToSQL()
+
+	if err != nil {
+		return nil, fmt.Errorf("RepoCreatePost() ToSQL:  %w", err)
+	}
+
+	err = r.Conn.QueryRow(ctxTimeOut, sqlQuery).
 		Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
 	if err != nil {
-		return nil, fmt.Errorf("RepoCreatePost() QueryRow(INSERT) %w", err)
+		return nil, fmt.Errorf("RepoCreatePost() QueryRow() %w", err)
 	}
 	return &post, nil
 }
@@ -190,9 +200,19 @@ func (r *UserRepository) RepoGetAllUsers(ctx context.Context, sqlQuery string) (
 	}
 	return &users, nil
 }
-func (r *UserRepository) RepoCheckUser(ctx context.Context, userId int, sqlQuery string) error {
+func (r *UserRepository) RepoCheckUser(ctx context.Context, userId int) error {
 
-	err := r.Conn.QueryRow(ctx, sqlQuery, userId).Scan(&userId)
+	sqlQueryCheck, _, err := goqu.Select("id").
+		From("users").
+		Where(goqu.Ex{"id": userId}).
+		ToSQL()
+
+	if err != nil {
+		return fmt.Errorf("RepoCheckUser() ToSQL:%w", err)
+	}
+
+	var id int
+	err = r.Conn.QueryRow(ctx, sqlQueryCheck).Scan(&id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("RepoCheckUser(): user with ID:%d not found", userId)
