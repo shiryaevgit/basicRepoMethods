@@ -28,9 +28,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
 
-	sqlQuery := "INSERT INTO users (login, full_name) VALUES ($1, $2) RETURNING *"
-
-	createdUser, err := h.dbHandler.RepoInsertUser(h.dbHandler.Ctx, user, sqlQuery)
+	createdUser, err := h.dbHandler.RepoInsertUser(h.dbHandler.Ctx, user)
 	if err != nil {
 		log.Printf("CreateUser(): %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -58,9 +56,7 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sqlQuery := "SELECT id, login, full_name, created_at FROM users WHERE id=$1"
-
-	gotUser, err := h.dbHandler.RepoGetUserById(h.dbHandler.Ctx, idInt, sqlQuery)
+	gotUser, err := h.dbHandler.RepoGetUserById(h.dbHandler.Ctx, idInt)
 	if err != nil {
 		log.Printf("GetUserById(): %v", err)
 		http.Error(w, "User not found", http.StatusNotFound)
@@ -87,44 +83,15 @@ func (h *Handler) GetUsersList(w http.ResponseWriter, r *http.Request) {
 	h.dbHandler.Mu.Lock()
 	defer h.dbHandler.Mu.Unlock()
 
-	orderBy := r.URL.Query().Get("orderBy")
 	login := r.URL.Query().Get("login")
+	orderBy := r.URL.Query().Get("orderBy")
 	limit := r.URL.Query().Get("limit")
 	offset := r.URL.Query().Get("offset")
 
-	ds := goqu.From("users")
-
-	if login != "" {
-		ds = ds.Where(goqu.C("login").Eq(login))
-	}
-	if orderBy != "" {
-		ds = ds.Order(goqu.I(orderBy).Asc())
-	}
-	if limit != "" {
-		limitInt, err := strconv.ParseUint(limit, 10, 64)
-		if err != nil {
-			http.Error(w, "invalid limit parameter", http.StatusBadRequest)
-		}
-		ds = ds.Limit(uint(limitInt))
-	}
-	if offset != "" {
-		offsetInt, err := strconv.ParseUint(offset, 10, 64)
-		if err != nil {
-			http.Error(w, "invalid offset parameter", http.StatusBadRequest)
-		}
-		ds = ds.Offset(uint(offsetInt))
-	}
-
-	sqlQuery, _, err := ds.ToSQL()
-	if err != nil {
-		log.Printf("GetUsersList() ToSQL: %v", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}
-
-	gotUsers, err := h.dbHandler.RepoGetUsersList(h.dbHandler.Ctx, sqlQuery)
+	gotUsers, err := h.dbHandler.RepoGetUsersList(h.dbHandler.Ctx, login, orderBy, limit, offset)
 
 	if err != nil {
-		log.Printf("GetUsersList() RepoGetUsersList: %v", err)
+		log.Printf("GetUsersList() : %v", err)
 		http.Error(w, "The entered data is incorrect", http.StatusBadRequest)
 	}
 

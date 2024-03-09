@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/doug-martin/goqu/v9"
 	"github.com/jackc/pgx/v5"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
 	"log"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -36,11 +38,21 @@ func (r *UserRepository) Close() {
 	}
 }
 
-func (r *UserRepository) RepoInsertUser(ctx context.Context, user models.User, sqlQuery string) (*models.User, error) {
+func (r *UserRepository) RepoInsertUser(ctx context.Context, user models.User) (*models.User, error) {
 	ctxWithDeadline, cancel := context.WithDeadline(ctx, time.Now().Add(1*time.Second))
 	defer cancel()
 
-	err := r.Conn.QueryRow(ctxWithDeadline, sqlQuery, user.Login, user.FullName).
+	sqlQuery, _, err := goqu.Insert("users").
+		Cols("login", "full_name").
+		Vals(goqu.Vals{user.Login, user.FullName}).
+		Returning("*").
+		ToSQL()
+
+	if err != nil {
+		return nil, fmt.Errorf("RepoGetUserById() ToSQL:  %w", err)
+	}
+
+	err = r.Conn.QueryRow(ctxWithDeadline, sqlQuery).
 		Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("RepoInsertUser() QueryRow: %w", err)
@@ -48,12 +60,21 @@ func (r *UserRepository) RepoInsertUser(ctx context.Context, user models.User, s
 	return &user, nil
 }
 
-func (r *UserRepository) RepoGetUserById(ctx context.Context, id int, sqlQuery string) (*models.User, error) {
+func (r *UserRepository) RepoGetUserById(ctx context.Context, id int) (*models.User, error) {
 	ctxWithDeadline, cancel := context.WithDeadline(ctx, time.Now().Add(1*time.Second))
 	defer cancel()
 
+	sqlQuery, _, err := goqu.From("users").
+		Select("id", "login", "full_name", "created_at").
+		Where(goqu.Ex{"id": id}).
+		ToSQL()
+
+	if err != nil {
+		return nil, fmt.Errorf("RepoGetUserById() ToSQL:  %w", err)
+	}
+
 	var user models.User
-	err := r.Conn.QueryRow(ctxWithDeadline, sqlQuery, id).
+	err = r.Conn.QueryRow(ctxWithDeadline, sqlQuery).
 		Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("RepoGetUserById() QueryRow:  %w", err)
@@ -61,9 +82,37 @@ func (r *UserRepository) RepoGetUserById(ctx context.Context, id int, sqlQuery s
 	return &user, err
 }
 
-func (r *UserRepository) RepoGetUsersList(ctx context.Context, sqlQuery string) (*[]models.User, error) {
+func (r *UserRepository) RepoGetUsersList(ctx context.Context, login, orderBy, limit, offset string) (*[]models.User, error) {
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
+
+	ds := goqu.From("users")
+
+	if login != "" {
+		ds = ds.Where(goqu.C("login").Eq(login))
+	}
+	if orderBy != "" {
+		ds = ds.Order(goqu.I(orderBy).Asc())
+	}
+	if limit != "" {
+		limitInt, err := strconv.ParseUint(limit, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("RepoGetUsersList() ParseUint(limit): %w", err)
+		}
+		ds = ds.Limit(uint(limitInt))
+	}
+	if offset != "" {
+		offsetInt, err := strconv.ParseUint(offset, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("RepoGetUsersList() ParseUint(offset): %w", err)
+		}
+		ds = ds.Offset(uint(offsetInt))
+	}
+
+	sqlQuery, _, err := ds.ToSQL()
+	if err != nil {
+		return nil, fmt.Errorf("RepoGetUsersList() ToSQL: %w", err)
+	}
 
 	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
 	if err != nil {
