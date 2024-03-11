@@ -8,6 +8,7 @@ import (
 type Config struct {
 	ServerConfig
 	PostgresConfig
+	MongoConfig
 }
 
 type ServerConfig struct {
@@ -16,6 +17,10 @@ type ServerConfig struct {
 
 type PostgresConfig struct {
 	PostgresURL string
+}
+
+type MongoConfig struct {
+	MongoURI string
 }
 
 func LoadConfig(path string) (Config, error) {

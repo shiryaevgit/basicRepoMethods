@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
+	"github.com/shiryaevgit/basicRepoMethods/repository/mongo"
 	"github.com/shiryaevgit/basicRepoMethods/repository/postgres"
 	"log"
 	"net/http"
@@ -11,11 +12,12 @@ import (
 )
 
 type Handler struct {
-	dbHandler *postgres.RepoPostgres
+	dbPostgres *postgres.RepoPostgres
+	dbMongo    *mongo.RepoMongo
 }
 
 func NewHandlerServ(db *postgres.RepoPostgres) *Handler {
-	return &Handler{dbHandler: db}
+	return &Handler{dbPostgres: db}
 }
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +29,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
 
-	createdUser, err := h.dbHandler.CreateUser(h.dbHandler.Ctx, user)
+	createdUser, err := h.dbPostgres.CreateUser(h.dbPostgres.Ctx, user)
 	if err != nil {
 		log.Printf("CreateUser(): %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -43,8 +45,8 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
-	h.dbHandler.Mu.Lock()
-	defer h.dbHandler.Mu.Unlock()
+	h.dbPostgres.Mu.Lock()
+	defer h.dbPostgres.Mu.Unlock()
 
 	idString := r.PathValue("id")
 	fmt.Println(idString)
@@ -55,7 +57,7 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gotUser, err := h.dbHandler.GetUserById(h.dbHandler.Ctx, idInt)
+	gotUser, err := h.dbPostgres.GetUserById(h.dbPostgres.Ctx, idInt)
 	if err != nil {
 		log.Printf("GetUserById(): %v", err)
 		http.Error(w, "User not found", http.StatusNotFound)
@@ -79,15 +81,15 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUsersList(w http.ResponseWriter, r *http.Request) {
-	h.dbHandler.Mu.Lock()
-	defer h.dbHandler.Mu.Unlock()
+	h.dbPostgres.Mu.Lock()
+	defer h.dbPostgres.Mu.Unlock()
 
 	login := r.URL.Query().Get("login")
 	orderBy := r.URL.Query().Get("orderBy")
 	limit := r.URL.Query().Get("limit")
 	offset := r.URL.Query().Get("offset")
 
-	gotUsers, err := h.dbHandler.GetUsersList(h.dbHandler.Ctx, login, orderBy, limit, offset)
+	gotUsers, err := h.dbPostgres.GetUsersList(h.dbPostgres.Ctx, login, orderBy, limit, offset)
 
 	if err != nil {
 		log.Printf("GetUsersList() : %v", err)
@@ -119,13 +121,13 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = h.dbHandler.CheckUser(h.dbHandler.Ctx, post.UserId); err != nil {
+	if err = h.dbPostgres.CheckUser(h.dbPostgres.Ctx, post.UserId); err != nil {
 		log.Printf("CreatePost(): %v", err)
 		http.Error(w, "user not found", http.StatusBadRequest)
 		return
 	}
 
-	createdPost, err := h.dbHandler.CreatePost(h.dbHandler.Ctx, *post)
+	createdPost, err := h.dbPostgres.CreatePost(h.dbPostgres.Ctx, *post)
 	if err != nil {
 		log.Printf("CreatePost(): %v", err)
 		http.Error(w, "User not found", http.StatusBadRequest)
@@ -147,14 +149,14 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
-	h.dbHandler.Mu.Lock()
-	defer h.dbHandler.Mu.Unlock()
+	h.dbPostgres.Mu.Lock()
+	defer h.dbPostgres.Mu.Unlock()
 
 	userId := r.URL.Query().Get("userId")
 	limit := r.URL.Query().Get("limit")
 	offset := r.URL.Query().Get("offset")
 
-	gotPosts, err := h.dbHandler.GetAllPostsUser(h.dbHandler.Ctx, userId, limit, offset)
+	gotPosts, err := h.dbPostgres.GetAllPostsUser(h.dbPostgres.Ctx, userId, limit, offset)
 	if err != nil {
 		log.Printf("GetAllPostsUser() RepoGetAllPostsUser: %v", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -176,10 +178,10 @@ func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
-	h.dbHandler.Mu.Lock()
-	defer h.dbHandler.Mu.Unlock()
+	h.dbPostgres.Mu.Lock()
+	defer h.dbPostgres.Mu.Unlock()
 
-	gotUsers, err := h.dbHandler.GetAllUsers(h.dbHandler.Ctx)
+	gotUsers, err := h.dbPostgres.GetAllUsers(h.dbPostgres.Ctx)
 	if err != nil {
 		log.Printf("GetAllUsers(): %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

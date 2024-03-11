@@ -8,6 +8,7 @@ import (
 	"github.com/shiryaevgit/basicRepoMethods/pkg/loggers/logrus"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/loggers/standLog"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/server"
+	"github.com/shiryaevgit/basicRepoMethods/repository/mongo"
 	"github.com/shiryaevgit/basicRepoMethods/repository/postgres"
 	"log"
 	"net/http"
@@ -26,11 +27,17 @@ func main() {
 		log.Fatalf("LoadConfig(): %v", err)
 	}
 
-	db, err := postgres.NewRepoPostgres(terminateContext, configFile.PostgresURL)
+	dataBasePostgres, err := postgres.NewRepoPostgres(terminateContext, configFile.PostgresURL)
 	if err != nil {
 		log.Fatalf("unable to connect to postgres: %v", err)
 	}
-	defer db.Close()
+	defer dataBasePostgres.Close()
+
+	dataBaseMongo, err := mongo.NewRepoMongo(terminateContext, configFile.MongoURI)
+	if err != nil {
+		log.Fatalf("unable to connect to mongo: %v", err)
+	}
+	defer dataBaseMongo.Close()
 
 	// standLog
 	fileLog, err := standLog.LoadStandLog("standLog.log")
@@ -49,7 +56,7 @@ func main() {
 
 	srv := new(server.Server)
 	mux := http.NewServeMux()
-	handlerDb := handlers.NewHandlerServ(db)
+	handlerDb := handlers.NewHandlerServ(dataBasePostgres)
 
 	mux.HandleFunc("POST /users", handlerDb.CreateUser)
 	mux.HandleFunc("GET /users/{id}", handlerDb.GetUserById)

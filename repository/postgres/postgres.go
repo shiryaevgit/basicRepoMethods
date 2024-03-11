@@ -7,6 +7,7 @@ import (
 	"github.com/doug-martin/goqu/v9"
 	"github.com/jackc/pgx/v5"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
+
 	"log"
 	"strconv"
 	"sync"
@@ -14,9 +15,9 @@ import (
 )
 
 type RepoPostgres struct {
-	Conn *pgx.Conn
-	Mu   sync.Mutex
 	Ctx  context.Context
+	Mu   sync.Mutex
+	Conn *pgx.Conn
 }
 
 func NewRepoPostgres(terminateContext context.Context, dbURL string) (*RepoPostgres, error) {
@@ -225,7 +226,8 @@ func (r *RepoPostgres) GetAllUsers(ctx context.Context) (*[]models.User, error) 
 	return &users, nil
 }
 func (r *RepoPostgres) CheckUser(ctx context.Context, userId int) error {
-
+	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
 	sqlQueryCheck, _, err := goqu.Select("id").
 		From("users").
 		Where(goqu.Ex{"id": userId}).
@@ -236,7 +238,7 @@ func (r *RepoPostgres) CheckUser(ctx context.Context, userId int) error {
 	}
 
 	var id int
-	err = r.Conn.QueryRow(ctx, sqlQueryCheck).Scan(&id)
+	err = r.Conn.QueryRow(ctxTimeOut, sqlQueryCheck).Scan(&id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("CheckUser(): user with ID:%d not found", userId)

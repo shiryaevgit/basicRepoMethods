@@ -5,7 +5,7 @@ import (
 	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
 )
 
-type UserInterface interface {
+type UserRepository interface {
 	Close()
 	CreateUser(ctx context.Context, user models.User) (*models.User, error)
 	GetUserById(ctx context.Context, userId int) (*models.User, error)
