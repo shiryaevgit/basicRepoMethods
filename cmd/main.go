@@ -56,7 +56,7 @@ func main() {
 
 	srv := new(server.Server)
 	mux := http.NewServeMux()
-	handlerDb := handlers.NewHandlerServ(dataBasePostgres)
+	handlerDb := handlers.NewHandlerServ(dataBasePostgres, dataBaseMongo)
 
 	mux.HandleFunc("POST /users", handlerDb.CreateUser)
 	mux.HandleFunc("GET /users/{id}", handlerDb.GetUserById)

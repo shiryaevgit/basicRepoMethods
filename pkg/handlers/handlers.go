@@ -16,8 +16,8 @@ type Handler struct {
 	dbMongo    *mongo.RepoMongo
 }
 
-func NewHandlerServ(db *postgres.RepoPostgres) *Handler {
-	return &Handler{dbPostgres: db}
+func NewHandlerServ(db *postgres.RepoPostgres, dbMongo *mongo.RepoMongo) *Handler {
+	return &Handler{dbPostgres: db, dbMongo: dbMongo}
 }
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
