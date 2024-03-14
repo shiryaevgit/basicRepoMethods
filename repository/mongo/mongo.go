@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/doug-martin/goqu/v9"
-	"github.com/jackc/pgx/v5"
 	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -112,49 +110,48 @@ func (r *RepoMongo) GetUsersList(ctx context.Context, login, orderBy, limit, off
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	ds := goqu.From("users")
-
+	filter := bson.M{}
 	if login != "" {
-		ds = ds.Where(goqu.C("login").Eq(login))
+		filter["login"] = login
 	}
+
+	findOptions := options.Find()
 	if orderBy != "" {
-		ds = ds.Order(goqu.I(orderBy).Asc())
+		findOptions.SetSort(bson.D{{orderBy, 1}})
 	}
 	if limit != "" {
-		limitInt, err := strconv.ParseUint(limit, 10, 64)
+		limitInt, err := strconv.ParseInt(limit, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("GetUsersList() ParseUint(limit): %w", err)
+			return nil, fmt.Errorf("GetUsersList() ParseInt(limit): %w", err)
 		}
-		ds = ds.Limit(uint(limitInt))
+		findOptions.SetLimit(limitInt)
 	}
 	if offset != "" {
-		offsetInt, err := strconv.ParseUint(offset, 10, 64)
+		offsetInt, err := strconv.ParseInt(offset, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("GetUsersList() ParseUint(offset): %w", err)
+			return nil, fmt.Errorf("GetUsersList() ParseInt(offset): %w", err)
 		}
-		ds = ds.Offset(uint(offsetInt))
+		findOptions.SetSkip(offsetInt)
 	}
 
-	sqlQuery, _, err := ds.ToSQL()
+	cursor, err := r.users.Find(ctxTimeOut, filter, findOptions) // запрос к коллекции
 	if err != nil {
-		return nil, fmt.Errorf("GetUsersList() ToSQL: %w", err)
+		return nil, fmt.Errorf("GetUsersList() Find: %w", err)
 	}
+	defer cursor.Close(ctxTimeOut)
 
-	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
-	if err != nil {
-		return nil, fmt.Errorf("GetUsersList() Query:%w", err)
-	}
-
-	users := make([]models.User, 0, 100)
-
-	for rows.Next() {
-		user := *new(models.User)
-		err = rows.Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
-		if err != nil {
-			return nil, fmt.Errorf("GetUsersList() Scan:%w", err)
+	var users []models.User
+	for cursor.Next(ctx) {
+		var user models.User
+		if err = cursor.Decode(&user); err != nil {
+			return nil, fmt.Errorf("GetUsersList() Decode: %w", err)
 		}
 		users = append(users, user)
 	}
+	if err = cursor.Err(); err != nil {
+		return nil, fmt.Errorf("GetUsersList() Cursor error: %w", err)
+	}
+
 	return &users, nil
 
 }
@@ -164,21 +161,21 @@ func (r *RepoMongo) CreatePost(ctx context.Context, post models.Post) (*models.P
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	sqlQuery, _, err := goqu.Insert("posts").
-		Cols("user_id", "text").
-		Vals(goqu.Vals{post.UserId, post.Text}).
-		Returning("*").
-		ToSQL()
-
+	result, err := r.posts.InsertOne(ctxTimeOut, post)
 	if err != nil {
-		return nil, fmt.Errorf("CreatePost() ToSQL:  %w", err)
+		return nil, fmt.Errorf("CreatePost() InsertOne: %w", err)
 	}
 
-	err = r.Conn.QueryRow(ctxTimeOut, sqlQuery).
-		Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
-	if err != nil {
-		return nil, fmt.Errorf("CreatePost() QueryRow() %w", err)
+	insertedID, ok := result.InsertedID.(primitive.ObjectID)
+	if !ok {
+		return nil, errors.New("CreatePost() InsertedID is not an ObjectID")
 	}
+
+	post.ID, err = strconv.Atoi(insertedID.Hex())
+	if err != nil {
+		return nil, fmt.Errorf("CreateUser() Atoi: %w", err)
+	}
+
 	return &post, nil
 }
 
@@ -187,87 +184,83 @@ func (r *RepoMongo) GetAllPostsUser(ctx context.Context, userId, limit, offset s
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	ds := goqu.From("posts")
-
+	filter := bson.M{}
 	if userId != "" {
-		ds = ds.Where(goqu.C("user_id").Eq(userId))
+		filter["user_id"] = userId
 	}
+
+	options := options.Find()
 	if limit != "" {
-		limitInt, err := strconv.ParseUint(limit, 10, 64)
+		limitInt, err := strconv.ParseInt(limit, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("GetAllUsers() ParseUint(limit): %w", err)
+			return nil, fmt.Errorf("GetAllPostsUser() ParseInt(limit): %w", err)
 		}
-		ds = ds.Limit(uint(limitInt))
+		options.SetLimit(limitInt)
 	}
-
 	if offset != "" {
-		offsetInt, err := strconv.ParseUint(offset, 10, 64)
+		offsetInt, err := strconv.ParseInt(offset, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("GetAllUsers() ParseUint(offset): %w", err)
+			return nil, fmt.Errorf("GetAllPostsUser() ParseInt(offset): %w", err)
 		}
-		ds = ds.Offset(uint(offsetInt))
+		options.SetSkip(offsetInt)
 	}
-	sqlQuery, _, _ := ds.ToSQL()
 
-	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
+	cursor, err := r.posts.Find(ctxTimeOut, filter, options)
 	if err != nil {
-		return nil, fmt.Errorf("GetAllPostsUser() Query:%w", err)
+		return nil, fmt.Errorf("GetAllPostsUser() Find: %w", err)
 	}
-	defer rows.Close()
+	defer cursor.Close(ctxTimeOut)
 
-	posts := make([]models.Post, 0, 100)
-
-	for rows.Next() {
+	var posts []models.Post
+	for cursor.Next(ctxTimeOut) {
 		var post models.Post
-		err = rows.Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
-		if err != nil {
-			return nil, fmt.Errorf("GetAllPostsUser() Scan:%w", err)
+		if err = cursor.Decode(&post); err != nil {
+			return nil, fmt.Errorf("GetAllPostsUser() Decode: %w", err)
 		}
 		posts = append(posts, post)
 	}
+	if err = cursor.Err(); err != nil {
+		return nil, fmt.Errorf("GetAllPostsUser() Cursor error: %w", err)
+	}
+
 	return &posts, nil
 }
 func (r *RepoMongo) GetAllUsers(ctx context.Context) (*[]models.User, error) {
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	sqlQuery, _, _ := goqu.From("users").ToSQL()
-
-	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
+	cursor, err := r.users.Find(ctxTimeOut, bson.M{})
 	if err != nil {
-		return nil, fmt.Errorf("GetAllUsers() Query: %w", err)
+		return nil, fmt.Errorf("GetAllUsers() Find: %w", err)
 	}
+	defer cursor.Close(ctxTimeOut)
 
-	users := make([]models.User, 0, 100)
-
-	for rows.Next() {
+	var users []models.User
+	for cursor.Next(ctxTimeOut) {
 		var user models.User
-		err = rows.Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
-		if err != nil {
-			return nil, fmt.Errorf("GetAllUsers() Scan: %w", err)
+		if err = cursor.Decode(&user); err != nil {
+			return nil, fmt.Errorf("GetAllUsers() Decode: %w", err)
 		}
 		users = append(users, user)
 	}
+	if err = cursor.Err(); err != nil {
+		return nil, fmt.Errorf("GetAllUsers() Cursor error: %w", err)
+	}
+
 	return &users, nil
 }
 func (r *RepoMongo) CheckUser(ctx context.Context, userId int) error {
+	ctxWithDeadline, cancel := context.WithDeadline(ctx, time.Now().Add(1*time.Second))
+	defer cancel()
 
-	sqlQueryCheck, _, err := goqu.Select("id").
-		From("users").
-		Where(goqu.Ex{"id": userId}).
-		ToSQL()
+	filter := bson.D{{"id", userId}}
 
-	if err != nil {
-		return fmt.Errorf("CheckUser() ToSQL:%w", err)
-	}
+	res := r.users.FindOne(ctxWithDeadline, filter)
 
-	var id int
-	err = r.Conn.QueryRow(ctx, sqlQueryCheck).Scan(&id)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("CheckUser(): user with ID:%d not found", userId)
+	if res.Err() != nil {
+		if errors.Is(res.Err(), mongo.ErrNoDocuments) {
+			return fmt.Errorf("CheckUser() user with id:%d not found", userId)
 		}
-		return fmt.Errorf("CheckUser() QueryRow(SELECT): %w", err)
 	}
 	return nil
 }
