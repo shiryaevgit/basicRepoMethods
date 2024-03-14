@@ -21,7 +21,7 @@ type RepoPostgres struct {
 }
 
 func NewRepoPostgres(terminateContext context.Context, dbURL string) (*RepoPostgres, error) {
-	ctxTimeOut, cancel := context.WithTimeout(terminateContext, 1*time.Second)
+	ctxTimeOut, cancel := context.WithTimeout(terminateContext, 3*time.Second)
 	defer cancel()
 
 	conn, err := pgx.Connect(ctxTimeOut, dbURL)

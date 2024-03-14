@@ -56,14 +56,13 @@ func (r *RepoMongo) Close() {
 	r.Mu.Lock()
 	defer r.Mu.Unlock()
 
-	// Закрываем соединение с MongoDB
 	if err := r.Conn.Client().Disconnect(r.Ctx); err != nil {
 		log.Printf("Error disconnecting from MongoDB: %v", err)
 	}
 }
 
 func (r *RepoMongo) CreateUser(ctx context.Context, user models.User) (*models.User, error) {
-	ctxWithDeadline, cancel := context.WithDeadline(ctx, time.Now().Add(1*time.Second))
+	ctxWithDeadline, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	result, err := r.users.InsertOne(ctxWithDeadline, user)
@@ -71,7 +70,6 @@ func (r *RepoMongo) CreateUser(ctx context.Context, user models.User) (*models.U
 		return nil, fmt.Errorf("CreateUser() InsertOne:%w", err)
 	}
 
-	// Получение идентификатора (ID) нового пользователя из результата вставки
 	insertedID, ok := result.InsertedID.(primitive.ObjectID)
 	if !ok {
 		return nil, fmt.Errorf("CreateUser() Invalid inserted ID type")

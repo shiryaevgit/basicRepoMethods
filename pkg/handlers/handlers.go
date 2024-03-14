@@ -29,7 +29,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
 
-	createdUser, err := h.dbPostgres.CreateUser(h.dbPostgres.Ctx, user)
+	createdUser, err := h.dbMongo.CreateUser(h.dbMongo.Ctx, user)
 	if err != nil {
 		log.Printf("CreateUser(): %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -45,8 +45,8 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
-	h.dbPostgres.Mu.Lock()
-	defer h.dbPostgres.Mu.Unlock()
+	h.dbMongo.Mu.Lock()
+	defer h.dbMongo.Mu.Unlock()
 
 	idString := r.PathValue("id")
 	fmt.Println(idString)
@@ -57,7 +57,7 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gotUser, err := h.dbPostgres.GetUserById(h.dbPostgres.Ctx, idInt)
+	gotUser, err := h.dbMongo.GetUserById(h.dbMongo.Ctx, idInt)
 	if err != nil {
 		log.Printf("GetUserById(): %v", err)
 		http.Error(w, "User not found", http.StatusNotFound)
@@ -81,15 +81,15 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUsersList(w http.ResponseWriter, r *http.Request) {
-	h.dbPostgres.Mu.Lock()
-	defer h.dbPostgres.Mu.Unlock()
+	h.dbMongo.Mu.Lock()
+	defer h.dbMongo.Mu.Unlock()
 
 	login := r.URL.Query().Get("login")
 	orderBy := r.URL.Query().Get("orderBy")
 	limit := r.URL.Query().Get("limit")
 	offset := r.URL.Query().Get("offset")
 
-	gotUsers, err := h.dbPostgres.GetUsersList(h.dbPostgres.Ctx, login, orderBy, limit, offset)
+	gotUsers, err := h.dbMongo.GetUsersList(h.dbMongo.Ctx, login, orderBy, limit, offset)
 
 	if err != nil {
 		log.Printf("GetUsersList() : %v", err)
@@ -121,13 +121,13 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = h.dbPostgres.CheckUser(h.dbPostgres.Ctx, post.UserId); err != nil {
+	if err = h.dbMongo.CheckUser(h.dbMongo.Ctx, post.UserId); err != nil {
 		log.Printf("CreatePost(): %v", err)
 		http.Error(w, "user not found", http.StatusBadRequest)
 		return
 	}
 
-	createdPost, err := h.dbPostgres.CreatePost(h.dbPostgres.Ctx, *post)
+	createdPost, err := h.dbMongo.CreatePost(h.dbMongo.Ctx, *post)
 	if err != nil {
 		log.Printf("CreatePost(): %v", err)
 		http.Error(w, "User not found", http.StatusBadRequest)
@@ -149,14 +149,14 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
-	h.dbPostgres.Mu.Lock()
-	defer h.dbPostgres.Mu.Unlock()
+	h.dbMongo.Mu.Lock()
+	defer h.dbMongo.Mu.Unlock()
 
 	userId := r.URL.Query().Get("userId")
 	limit := r.URL.Query().Get("limit")
 	offset := r.URL.Query().Get("offset")
 
-	gotPosts, err := h.dbPostgres.GetAllPostsUser(h.dbPostgres.Ctx, userId, limit, offset)
+	gotPosts, err := h.dbMongo.GetAllPostsUser(h.dbMongo.Ctx, userId, limit, offset)
 	if err != nil {
 		log.Printf("GetAllPostsUser() RepoGetAllPostsUser: %v", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -178,10 +178,10 @@ func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
-	h.dbPostgres.Mu.Lock()
-	defer h.dbPostgres.Mu.Unlock()
+	h.dbMongo.Mu.Lock()
+	defer h.dbMongo.Mu.Unlock()
 
-	gotUsers, err := h.dbPostgres.GetAllUsers(h.dbPostgres.Ctx)
+	gotUsers, err := h.dbMongo.GetAllUsers(h.dbMongo.Ctx)
 	if err != nil {
 		log.Printf("GetAllUsers(): %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
