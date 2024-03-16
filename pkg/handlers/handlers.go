@@ -1,43 +1,65 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
-	"github.com/shiryaevgit/basicRepoMethods/repository/mongo"
-	"github.com/shiryaevgit/basicRepoMethods/repository/postgres"
 	"log"
 	"net/http"
 	"strconv"
+
+	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
 )
 
-type Handler struct {
-	dbPostgres *postgres.RepoPostgres
-	dbMongo    *mongo.RepoMongo
+// Объявляем интерфейс в месте использования
+type UserRepository interface {
+	Close()
+	CreateUser(ctx context.Context, user models.User) (*models.User, error)
+	GetUserById(ctx context.Context, userId int) (*models.User, error)
+	GetUsersList(ctx context.Context, login, orderBy, limit, offset string) (*[]models.User, error)
+	CreatePost(ctx context.Context, post models.Post) (*models.Post, error)
+	GetAllPostsUser(ctx context.Context, userId, limit, offset string) (*[]models.Post, error)
+	GetAllUsers(ctx context.Context) (*[]models.User, error)
+	CheckUser(ctx context.Context, userId int) error
 }
 
-func NewHandlerServ(db *postgres.RepoPostgres, dbMongo *mongo.RepoMongo) *Handler {
-	return &Handler{dbPostgres: db, dbMongo: dbMongo}
+type Handler struct {
+	// Здесь мы должны зависеть от интерфейса а не от конкретной реализации
+	userRepository UserRepository
+}
+
+func NewHandlerServ(repository UserRepository) *Handler {
+	return &Handler{userRepository: repository}
 }
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
-
 	var user models.User
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
 		log.Printf("CreateUser(): %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
+		/* Давай будем возвращать ответ в json формата:
+		{
+			"err": "ТЕКСТ ОШИБКИ"
+		}
+		*/
+
+		// Не забывай делать return
 	}
 
-	createdUser, err := h.dbMongo.CreateUser(h.dbMongo.Ctx, user)
+	// Используем контекст реквеста ( r.Context() )
+	createdUser, err := h.userRepository.CreateUser(r.Context(), user)
 	if err != nil {
 		log.Printf("CreateUser(): %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
+		// return ?
 	}
 
 	respJson, err := json.Marshal(createdUser)
+	// пропущена обработка ошибки
 	w.Header().Set("Content-Type", "application/json")
 	_, err = w.Write(respJson)
+	// Давай выводить ответ в JSON. Формат успешных ответов выбери самостоятельно
 	if err != nil {
 		log.Printf("CreateUser() Marshal: %v", err)
 	}
@@ -45,11 +67,8 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
-	h.dbMongo.Mu.Lock()
-	defer h.dbMongo.Mu.Unlock()
-
 	idString := r.PathValue("id")
-	fmt.Println(idString)
+	fmt.Println(idString) // используй логгер
 	idInt, err := strconv.Atoi(idString)
 	if err != nil {
 		log.Printf("GetUserById(): %v", err)
@@ -57,7 +76,7 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gotUser, err := h.dbMongo.GetUserById(h.dbMongo.Ctx, idInt)
+	gotUser, err := h.userRepository.GetUserById(h.userRepository.Ctx, idInt)
 	if err != nil {
 		log.Printf("GetUserById(): %v", err)
 		http.Error(w, "User not found", http.StatusNotFound)
@@ -68,6 +87,7 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("GetUserById(): %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
+		// return?
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -81,16 +101,12 @@ func (h *Handler) GetUserById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUsersList(w http.ResponseWriter, r *http.Request) {
-	h.dbMongo.Mu.Lock()
-	defer h.dbMongo.Mu.Unlock()
-
 	login := r.URL.Query().Get("login")
 	orderBy := r.URL.Query().Get("orderBy")
 	limit := r.URL.Query().Get("limit")
 	offset := r.URL.Query().Get("offset")
 
-	gotUsers, err := h.dbMongo.GetUsersList(h.dbMongo.Ctx, login, orderBy, limit, offset)
-
+	gotUsers, err := h.userRepository.GetUsersList(h.userRepository.Ctx, login, orderBy, limit, offset)
 	if err != nil {
 		log.Printf("GetUsersList() : %v", err)
 		http.Error(w, "The entered data is incorrect", http.StatusBadRequest)
@@ -121,13 +137,13 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = h.dbMongo.CheckUser(h.dbMongo.Ctx, post.UserId); err != nil {
+	if err = h.userRepository.CheckUser(h.userRepository.Ctx, post.UserId); err != nil {
 		log.Printf("CreatePost(): %v", err)
 		http.Error(w, "user not found", http.StatusBadRequest)
 		return
 	}
 
-	createdPost, err := h.dbMongo.CreatePost(h.dbMongo.Ctx, *post)
+	createdPost, err := h.userRepository.CreatePost(h.userRepository.Ctx, *post)
 	if err != nil {
 		log.Printf("CreatePost(): %v", err)
 		http.Error(w, "User not found", http.StatusBadRequest)
@@ -149,14 +165,11 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
-	h.dbMongo.Mu.Lock()
-	defer h.dbMongo.Mu.Unlock()
-
 	userId := r.URL.Query().Get("userId")
 	limit := r.URL.Query().Get("limit")
 	offset := r.URL.Query().Get("offset")
 
-	gotPosts, err := h.dbMongo.GetAllPostsUser(h.dbMongo.Ctx, userId, limit, offset)
+	gotPosts, err := h.userRepository.GetAllPostsUser(h.userRepository.Ctx, userId, limit, offset)
 	if err != nil {
 		log.Printf("GetAllPostsUser() RepoGetAllPostsUser: %v", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -177,11 +190,8 @@ func (h *Handler) GetAllPostsUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
-	h.dbMongo.Mu.Lock()
-	defer h.dbMongo.Mu.Unlock()
-
-	gotUsers, err := h.dbMongo.GetAllUsers(h.dbMongo.Ctx)
+func (h *Handler) GetAllUsers(w http.ResponseWriter, _ *http.Request) {
+	gotUsers, err := h.userRepository.GetAllUsers(h.userRepository.Ctx)
 	if err != nil {
 		log.Printf("GetAllUsers(): %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

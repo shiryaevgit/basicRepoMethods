@@ -4,36 +4,41 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/doug-martin/goqu/v9"
-	"github.com/jackc/pgx/v5"
-	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
-
 	"log"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/doug-martin/goqu/v9"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
 )
 
 type RepoPostgres struct {
-	Ctx  context.Context
-	Mu   sync.Mutex
-	Conn *pgx.Conn
+	Ctx  context.Context // контекст в структуре - антипаттерн
+	Mu   sync.Mutex      // делаем поля неэкспортируемыми (с маленькой буквы)
+	conn *pgx.Conn       // используем pgxpool заместо conn
 }
 
-func NewRepoPostgres(terminateContext context.Context, dbURL string) (*RepoPostgres, error) {
-	ctxTimeOut, cancel := context.WithTimeout(terminateContext, 3*time.Second)
+func NewRepoPostgres(ctx context.Context, dbURL string) (*RepoPostgres, error) {
+	connectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	conn, err := pgx.Connect(ctxTimeOut, dbURL)
+	// Можно сдвинуть в main ко всем инъекциям и передавать входным параметром в конструктор NewRepoPostgres
+	conn, err := pgx.Connect(connectCtx, dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("NewRepoPostgres() connect: %w", err)
 	}
-	var mtx sync.Mutex
-	return &RepoPostgres{Conn: conn, Mu: mtx, Ctx: terminateContext}, nil
+
+	var mtx sync.Mutex // зачем мьютекс?
+
+	return &RepoPostgres{conn: conn, Mu: mtx, Ctx: ctx}, nil
 }
 
+// передавай контекст в close, возвращай ошибку наверх
 func (r *RepoPostgres) Close() {
-	err := r.Conn.Close(context.Background())
+	err := r.conn.Close(context.Background())
 	if err != nil {
 		log.Printf("Close(): %v", err)
 	}
@@ -41,21 +46,22 @@ func (r *RepoPostgres) Close() {
 
 func (r *RepoPostgres) CreateUser(ctx context.Context, user models.User) (*models.User, error) {
 	ctxWithDeadline, cancel := context.WithDeadline(ctx, time.Now().Add(1*time.Second))
-	defer cancel()
+	defer cancel() // лучше context.WithTimeout
 
 	sqlQuery, _, err := goqu.Insert("users").
 		Cols("login", "full_name").
 		Vals(goqu.Vals{user.Login, user.FullName}).
-		Returning("*").
+		Returning("*"). // не используем *
 		ToSQL()
 
 	if err != nil {
 		return nil, fmt.Errorf("GetUserById() ToSQL:  %w", err)
 	}
 
-	err = r.Conn.QueryRow(ctxWithDeadline, sqlQuery).
+	err = r.conn.QueryRow(ctxWithDeadline, sqlQuery).
 		Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 	if err != nil {
+		// добавь constraint на уникальность login, обработай ошибку
 		return nil, fmt.Errorf(" CreateUser() QueryRow: %w", err)
 	}
 	return &user, nil
@@ -75,14 +81,18 @@ func (r *RepoPostgres) GetUserById(ctx context.Context, userId int) (*models.Use
 	}
 
 	var user models.User
-	err = r.Conn.QueryRow(ctxWithDeadline, sqlQuery).
+	err = r.conn.QueryRow(ctxWithDeadline, sqlQuery).
 		Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 	if err != nil {
+		// обработай ошибку pgx.ErrNoRows
+		// pgx.ErrNoRows
 		return nil, fmt.Errorf("GetUserById() QueryRow:  %w", err)
 	}
 	return &user, err
 }
 
+// поинтер на слайс в возвращающемся аргументе необоснован
+// выполни конвертацию limit, offset в uint в слое выше
 func (r *RepoPostgres) GetUsersList(ctx context.Context, login, orderBy, limit, offset string) (*[]models.User, error) {
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
@@ -98,6 +108,7 @@ func (r *RepoPostgres) GetUsersList(ctx context.Context, login, orderBy, limit, 
 	if limit != "" {
 		limitInt, err := strconv.ParseUint(limit, 10, 64)
 		if err != nil {
+			// Когда перенесешь в хэндлер, верни пользователю статус код 400
 			return nil, fmt.Errorf("GetUsersList() ParseUint(limit): %w", err)
 		}
 		ds = ds.Limit(uint(limitInt))
@@ -115,7 +126,7 @@ func (r *RepoPostgres) GetUsersList(ctx context.Context, login, orderBy, limit, 
 		return nil, fmt.Errorf("GetUsersList() ToSQL: %w", err)
 	}
 
-	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
+	rows, err := r.conn.Query(ctxTimeOut, sqlQuery)
 	if err != nil {
 		return nil, fmt.Errorf("GetUsersList() Query:%w", err)
 	}
@@ -123,33 +134,33 @@ func (r *RepoPostgres) GetUsersList(ctx context.Context, login, orderBy, limit, 
 	users := make([]models.User, 0, 100)
 
 	for rows.Next() {
-		user := *new(models.User)
+		var user models.User
 		err = rows.Scan(&user.ID, &user.Login, &user.FullName, &user.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("GetUsersList() Scan:%w", err)
 		}
 		users = append(users, user)
 	}
-	return &users, nil
 
+	return &users, nil
 }
 
 func (r *RepoPostgres) CreatePost(ctx context.Context, post models.Post) (*models.Post, error) {
-
-	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
+	// затемняем родительский контекст, так как все равно не будем к нему обращаться
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
 	sqlQuery, _, err := goqu.Insert("posts").
 		Cols("user_id", "text").
 		Vals(goqu.Vals{post.UserId, post.Text}).
-		Returning("*").
+		Returning("*"). // лучше перечислить колонки а не использовать *
 		ToSQL()
 
 	if err != nil {
 		return nil, fmt.Errorf("CreatePost() ToSQL:  %w", err)
 	}
 
-	err = r.Conn.QueryRow(ctxTimeOut, sqlQuery).
+	err = r.conn.QueryRow(ctx, sqlQuery).
 		Scan(&post.ID, &post.UserId, &post.Text, &post.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("CreatePost() QueryRow() %w", err)
@@ -158,7 +169,6 @@ func (r *RepoPostgres) CreatePost(ctx context.Context, post models.Post) (*model
 }
 
 func (r *RepoPostgres) GetAllPostsUser(ctx context.Context, userId, limit, offset string) (*[]models.Post, error) {
-
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
@@ -168,6 +178,7 @@ func (r *RepoPostgres) GetAllPostsUser(ctx context.Context, userId, limit, offse
 		ds = ds.Where(goqu.C("user_id").Eq(userId))
 	}
 	if limit != "" {
+		// limit в хэндлер
 		limitInt, err := strconv.ParseUint(limit, 10, 64)
 		if err != nil {
 			return nil, fmt.Errorf("GetAllUsers() ParseUint(limit): %w", err)
@@ -184,7 +195,7 @@ func (r *RepoPostgres) GetAllPostsUser(ctx context.Context, userId, limit, offse
 	}
 	sqlQuery, _, _ := ds.ToSQL()
 
-	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
+	rows, err := r.conn.Query(ctxTimeOut, sqlQuery)
 	if err != nil {
 		return nil, fmt.Errorf("GetAllPostsUser() Query:%w", err)
 	}
@@ -208,7 +219,7 @@ func (r *RepoPostgres) GetAllUsers(ctx context.Context) (*[]models.User, error) 
 
 	sqlQuery, _, _ := goqu.From("users").ToSQL()
 
-	rows, err := r.Conn.Query(ctxTimeOut, sqlQuery)
+	rows, err := r.conn.Query(ctxTimeOut, sqlQuery)
 	if err != nil {
 		return nil, fmt.Errorf("GetAllUsers() Query: %w", err)
 	}
@@ -228,6 +239,7 @@ func (r *RepoPostgres) GetAllUsers(ctx context.Context) (*[]models.User, error) 
 func (r *RepoPostgres) CheckUser(ctx context.Context, userId int) error {
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
+
 	sqlQueryCheck, _, err := goqu.Select("id").
 		From("users").
 		Where(goqu.Ex{"id": userId}).
@@ -238,7 +250,7 @@ func (r *RepoPostgres) CheckUser(ctx context.Context, userId int) error {
 	}
 
 	var id int
-	err = r.Conn.QueryRow(ctxTimeOut, sqlQueryCheck).Scan(&id)
+	err = r.conn.QueryRow(ctxTimeOut, sqlQueryCheck).Scan(&id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("CheckUser(): user with ID:%d not found", userId)

@@ -1,9 +1,13 @@
 package logrus
 
 import (
-	"github.com/sirupsen/logrus"
 	"os"
+
+	"github.com/sirupsen/logrus"
 )
+
+// для заменяемости логгера возвращаться должен интерфейс
+// Как дз - реализуй интерфейс логгера
 
 func SetupLogger(logFilePath string) (*logrus.Logger, *os.File, error) {
 	file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)

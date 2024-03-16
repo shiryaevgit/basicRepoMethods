@@ -4,15 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"strconv"
 	"sync"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/shiryaevgit/basicRepoMethods/pkg/models"
 )
 
 type RepoMongo struct {
@@ -27,6 +29,7 @@ type Collections struct {
 	posts *mongo.Collection
 }
 
+// назови контекст ctx
 func NewRepoMongo(terminateContext context.Context, MongoURI string) (*RepoMongo, error) {
 	ctxTimeOut, cancel := context.WithTimeout(terminateContext, 5*time.Second)
 	defer cancel()
@@ -37,11 +40,13 @@ func NewRepoMongo(terminateContext context.Context, MongoURI string) (*RepoMongo
 		return nil, fmt.Errorf("NewRepoMongo() Connect: %w", err)
 	}
 
+	// ctxTimeOut используй тут
 	err = client.Ping(context.Background(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("NewRepoMongo() Ping: %w", err)
 	}
 
+	// зачем мютекс?
 	var mtx sync.Mutex
 
 	//// Создаем базу данных и коллекции
@@ -53,7 +58,7 @@ func NewRepoMongo(terminateContext context.Context, MongoURI string) (*RepoMongo
 }
 
 func (r *RepoMongo) Close() {
-	r.Mu.Lock()
+	r.Mu.Lock() // зачем тут мьютекс?
 	defer r.Mu.Unlock()
 
 	if err := r.Conn.Client().Disconnect(r.Ctx); err != nil {
@@ -89,13 +94,21 @@ func (r *RepoMongo) GetUserById(ctx context.Context, userId int) (*models.User, 
 	filter := bson.D{{"id", userId}}
 
 	res := r.users.FindOne(ctxWithDeadline, filter)
-
 	if res.Err() != nil {
 		if errors.Is(res.Err(), mongo.ErrNoDocuments) {
 			return nil, fmt.Errorf("GetUserById() user with id:%d not found", userId)
 		}
 		return nil, fmt.Errorf("GetUserById(): %w", res.Err())
 	}
+
+	// лучше так:
+	//if err := res.Err(); err != nil {
+	//	if errors.Is(err, mongo.ErrNoDocuments) {
+	//		return nil, fmt.Errorf("GetUserById() user with id: %d not found: %w", userId, err)
+	//	}
+	//	return nil, fmt.Errorf("GetUserById(): %w", err)
+	//}
+
 	var user models.User
 	if err := res.Decode(&user); err != nil {
 		return nil, fmt.Errorf("GetUserById() Decode: %w", err)
@@ -136,7 +149,11 @@ func (r *RepoMongo) GetUsersList(ctx context.Context, login, orderBy, limit, off
 	if err != nil {
 		return nil, fmt.Errorf("GetUsersList() Find: %w", err)
 	}
-	defer cursor.Close(ctxTimeOut)
+	defer func() {
+		err := cursor.Close(ctxTimeOut)
+		if err != nil {
+		}
+	}() // обработай ошибку
 
 	var users []models.User
 	for cursor.Next(ctx) {
@@ -155,7 +172,6 @@ func (r *RepoMongo) GetUsersList(ctx context.Context, login, orderBy, limit, off
 }
 
 func (r *RepoMongo) CreatePost(ctx context.Context, post models.Post) (*models.Post, error) {
-
 	ctxTimeOut, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 

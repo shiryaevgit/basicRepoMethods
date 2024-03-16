@@ -12,7 +12,6 @@ type Server struct {
 }
 
 func (s *Server) Run(port string, mux *http.ServeMux, ctx context.Context) error {
-
 	s.httpServer = &http.Server{
 		Addr:           ":" + port,
 		Handler:        mux,
